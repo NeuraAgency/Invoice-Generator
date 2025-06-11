@@ -1,0 +1,11 @@
+.roundborder{
+    border-radius: 0px 50px 50px 0px;
+}
+.roundborder2{
+    border-radius: 25px 0px 0px 25px;
+    transition: background 0.3s, color 0.3s;
+    :hover {
+        background: black;
+        color: #ff6c31;
+    }
+}
