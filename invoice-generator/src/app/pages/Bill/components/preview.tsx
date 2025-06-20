@@ -1,9 +1,167 @@
 "use client";
-import React, { useRef } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import React from "react";
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  PDFDownloadLink,
+  Image,
+} from "@react-pdf/renderer";
 
-const preview = () => {
+// Define styles
+const styles = StyleSheet.create({
+  page: {
+    padding: 32,
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  companyInfo: {
+    fontSize: 10,
+    lineHeight: 1.5,
+    fontWeight: "bold",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 1000,
+    marginVertical: 12,
+    textAlign: "center",
+    textDecoration: "underline",
+  },
+  titleL: {
+    fontSize: 28,
+    fontWeight: 'heavy',
+    marginTop: 8,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: "#000",
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 12,
+  },
+  tableRow: {
+    flexDirection: "row",
+    borderColor: "#000",
+  },
+  cell: {
+    padding: 8,
+    fontSize: 12,
+    borderRightWidth: 1,
+    borderColor: "#000",
+  },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    fontSize: 12,
+    fontWeight: "bold",
+    borderBottomWidth: 1,
+  },
+  note: {
+    fontSize: 10,
+    fontWeight: "bold",
+    position: "absolute",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+  },
+  logo: {
+    width: 420,
+    height: "auto",
+    margin: "0 auto",
+    marginBottom: 40,
+  },
+});
+
+// PDF Document Component
+interface InvoicePDFProps {
+  date: string;
+  PO: string;
+  challan: string;
+  GP: string;
+  bill: string;
+  Company_Name: string;
+}
+
+const InvoicePDF: React.FC<InvoicePDFProps> = ({
+  date,
+  PO,
+  challan,
+  GP,
+  bill,
+  Company_Name,
+}) => (
+  <Document>
+    <Page size="A4" style={styles.page}>
+      <Image src="/zumech.png" style={styles.logo} />
+
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
+          <Text style={styles.companyInfo}>Contact: 03092308078</Text>
+          <Text style={styles.companyInfo}>Bill No: {bill}</Text>
+          <Text style={styles.companyInfo}>Challan No: {challan}</Text>
+          <Text style={styles.companyInfo}>Date: {date}</Text>
+        </View>
+        <View>
+          <Text style={styles.companyInfo}>P.O. No: {PO}</Text>
+          <Text style={styles.companyInfo}>G.P. No: {GP}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.title}>Company Name: {Company_Name}</Text>
+      <Text style={styles.titleL}>Invoice</Text>
+
+      {/* Table Header */}
+      <View style={styles.tableHeader}>
+        <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>Qty</Text>
+        <Text style={[styles.cell, { flex: 8 }]}>Description</Text>
+        <Text style={[styles.cell, { flex: 2 }]}>Rate</Text>
+        <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}>
+          Amount
+        </Text>
+      </View>
+
+      {/* Table Rows */}
+      {[...Array(15)].map((_, idx) => (
+        <View
+          key={idx}
+          style={[
+            styles.tableRow,
+            idx === 14 ? { borderBottomWidth: 1, borderColor: "black" } : {},
+          ]}
+        >
+          <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}></Text>
+          <Text style={[styles.cell, { flex: 8 }]}></Text>
+          <Text style={[styles.cell, { flex: 2 }]}></Text>
+          <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}></Text>
+        </View>
+      ))}
+
+      <View style={styles.totalRow}>
+        <Text>Total:</Text>
+        <Text>Rs. 0.00</Text>
+      </View>
+
+      <Text style={styles.note}>
+        Note: This is a computer-generated document and does not require a
+        signature.
+      </Text>
+    </Page>
+  </Document>
+);
+
+// Main React component with Download button
+const Preview = () => {
   const date = new Date().toLocaleDateString();
   const PO = "00001";
   const challan = "00001";
@@ -11,113 +169,35 @@ const preview = () => {
   const bill = "00001";
   const Company_Name = "Kassim Textile Mills Limited";
 
-  // Ref for the Preview div
-  const previewRef = useRef<HTMLDivElement>(null);
-
-  const handleSaveAsPDF = async () => {
-    if (previewRef.current) {
-      const scale = 2;
-      const canvas = await html2canvas(previewRef.current, { scale });
-
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "px",
-        format: [canvas.width, canvas.height],
-      });
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-
-      pdf.save(`Invoice-${bill}.pdf`);
-    }
-  };
-
   return (
-    <div className="flex flex-col items-start justify-around">
-      <div
-        ref={previewRef}
-        className="Preview w-[794px] h-[950px] bg-white flex flex-col items-center p-8 rounded-xl shadow-lg overflow-hidden"
+    <div className="flex flex-col items-start gap-6">
+      <PDFDownloadLink
+        document={
+          <InvoicePDF
+            date={date}
+            PO={PO}
+            challan={challan}
+            GP={GP}
+            bill={bill}
+            Company_Name={Company_Name}
+          />
+        }
+        fileName={`Invoice-${bill}.pdf`}
       >
-        <img src="/zumech.png" alt="Z.U Mechanical Works" />
-
-        <div className="flex items-start justify-between w-full mt-4">
-          <div className="text-black font-bold text-sm">
-            <p className="leading-[1]">Email: z.ushahid@gmail.com</p>
-            <p className="leading-[1]">Contact: 03092308078</p>
-            <p className="leading-[1]">Bill No: 00001</p>
-            <p className="leading-[1]">Challan No: 00001</p>
-            <p className="leading-[1]">Date: {date}</p>
-          </div>
-          <div className="text-black font-bold text-sm mt-4">
-            <p className="font-bold">P.O. No: {PO}</p>
-            <p className="font-bold">G.P. No: {GP}</p>
-          </div>
-        </div>
-        <div className="text-black font-extrabold text-xl my-6">
-          <p>Company Name: {Company_Name}</p>
-        </div>
-        <div className="text-black font-extrabold text-3xl">
-          <p>Invoice</p>
-        </div>
-
-        <table className="text-left rounded-xl overflow-hidden mt-4 w-full">
-          <thead className="bg-black text-white ">
-            <tr>
-              <th className="px-4 py-1 border-r-2 border-white w-[10%]">Qty</th>
-              <th className="px-4 py-1 border-r-2 border-white w-[60%]">
-                Description
-              </th>
-              <th className="px-4 py-1 border-x-2 border-white w-[15%]">Rate</th>
-              <th className="px-4 py-1 w-[15%]">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="border-b-2 border-black">
-            {[...Array(12)].map((_, idx) => (
-              <tr key={idx} className="bg-white border-b-2 border-black h-6">
-                <td className="px-4 py-1 border-x-2 border-black"></td>
-                <td className="px-4 py-1"></td>
-                <td className="px-4 py-1 border-x-2 border-black"></td>
-                <td className="px-4 py-1 border-r-2 border-black"></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="flex justify-between w-full mt-4">
-          <div className="text-black font-bold text-sm">
-            <p>Total: </p>
-          </div>
-          <div className="text-black font-bold text-sm">
-            <p>Rs. 0.00</p>
-          </div>
-        </div>
-        <div className="">
-          <p className="text-black font-bold text-sm mt-4 ">
-            Note: This is a computer-generated document and does not require a
-            signature.
-          </p>
-        </div>
-      </div>
-
-      <div className="flex gap-4 mt-8">
-        <button
-          className="bg-[#ff6c31] py-2 px-4 rounded-xl cursor-pointer"
-          onClick={handleSaveAsPDF}
-        >
-          Save As
-        </button>
-        <button
-          className="bg-[#ff6c31] py-2 px-4 rounded-xl"
-          onClick={() => window.print()}
-        >
-          Print
-        </button>
-      </div>
+        {({ loading }) =>
+          loading ? (
+            <button className="bg-gray-400 py-2 px-4 rounded-xl">
+              Generating PDF...
+            </button>
+          ) : (
+            <button className="bg-[#ff6c31] py-2 px-4 rounded-xl">
+              Download PDF
+            </button>
+          )
+        }
+      </PDFDownloadLink>
     </div>
   );
 };
 
-export default preview;
+export default Preview;
