@@ -1,17 +1,17 @@
-import { useState } from "react";
+import { useState } from 'react';
 
 export const useOCR = () => {
+  const [ocrText, setOcrText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [ocrText, setOcrText] = useState("");
 
-  const performOCR = async (file) => {
+  const performOCR = async (file: File) => {
     setLoading(true);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append('file', file);
 
-    const res = await fetch("http://localhost:8000/ocr", {
-      method: "POST",
+    const res = await fetch('/api/ocr', {
+      method: 'POST',
       body: formData,
     });
 
