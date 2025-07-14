@@ -1,15 +1,30 @@
+'use client';
+import React, { useState } from "react";
 import Generate from "./components/generate";
 import Preview from "./components/preview";
-import React from "react";
 
-const page = () => {
+const Page = () => {
+  const [rows, setRows] = useState(
+    Array(8)
+      .fill(0)
+      .map(() => ({ qty: "", description: "", amount: "" }))
+  );
+  const [confirmedRows, setConfirmedRows] = useState(rows);
+
+  const handleConfirm = () => {
+    setConfirmedRows([...rows]);
+  };
+
   return (
     <div className="flex w-full h-screen items-center mx-14 gap-24">
-      <Generate />
-      <Preview />
-      
+      <Generate
+        rows={rows}
+        setRows={setRows}
+        onConfirm={handleConfirm}
+      />
+      <Preview rows={confirmedRows} />
     </div>
   );
 };
 
-export default page;
+export default Page;

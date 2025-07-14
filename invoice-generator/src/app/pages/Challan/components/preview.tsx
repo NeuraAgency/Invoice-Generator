@@ -7,7 +7,6 @@ import {
   View,
   StyleSheet,
   PDFDownloadLink,
-  PDFViewer,
   Image,
 } from "@react-pdf/renderer";
 
@@ -91,7 +90,6 @@ interface InvoicePDFProps {
   GP: string;
   bill: string;
   Company_Name: string;
-  rows: { qty: string; description: string; amount: string }[];
 }
 
 const InvoicePDF: React.FC<InvoicePDFProps> = ({
@@ -101,7 +99,6 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
   GP,
   bill,
   Company_Name,
-  rows,
 }) => (
   <Document>
     <Page size="A4" style={styles.page}>
@@ -128,15 +125,25 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
       <View style={styles.tableHeader}>
         <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>Qty</Text>
         <Text style={[styles.cell, { flex: 8 }]}>Description</Text>
-        <Text style={[styles.cell, { flex: 2 }]}>Amount</Text>
+        <Text style={[styles.cell, { flex: 2 }]}>Rate</Text>
+        <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}>
+          Amount
+        </Text>
       </View>
 
       {/* Table Rows */}
-      {rows.map((row, idx) => (
-        <View key={idx} style={styles.tableRow}>
-          <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>{row.qty}</Text>
-          <Text style={[styles.cell, { flex: 8 }]}>{row.description}</Text>
-          <Text style={[styles.cell, { flex: 2 }]}>{row.amount}</Text>
+      {[...Array(15)].map((_, idx) => (
+        <View
+          key={idx}
+          style={[
+            styles.tableRow,
+            idx === 14 ? { borderBottomWidth: 1, borderColor: "black" } : {},
+          ]}
+        >
+          <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}></Text>
+          <Text style={[styles.cell, { flex: 8 }]}></Text>
+          <Text style={[styles.cell, { flex: 2 }]}></Text>
+          <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}></Text>
         </View>
       ))}
 
@@ -153,14 +160,8 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
   </Document>
 );
 
-interface RowData {
-  qty: string;
-  description: string;
-  amount: string;
-}
-
 // Main React component with Download button
-const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
+const Preview = () => {
   const date = new Date().toLocaleDateString();
   const PO = "00001";
   const challan = "00001";
@@ -170,19 +171,6 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
 
   return (
     <div className="flex flex-col items-start gap-6">
-      <div className="w-[700px] h-[900px] overflow-hidden rounded-xl shadow-lg p-4 mb-4">
-        <PDFViewer className="w-full h-full">
-          <InvoicePDF
-            date={date}
-            PO={PO}
-            challan={challan}
-            GP={GP}
-            bill={bill}
-            Company_Name={Company_Name}
-            rows={rows}
-          />
-        </PDFViewer>
-      </div>
       <PDFDownloadLink
         document={
           <InvoicePDF
@@ -192,11 +180,21 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
             GP={GP}
             bill={bill}
             Company_Name={Company_Name}
-            rows={rows}
           />
         }
         fileName={`Invoice-${bill}.pdf`}
       >
+        {({ loading }) =>
+          loading ? (
+            <button className="bg-gray-400 py-2 px-4 rounded-xl">
+              Generating PDF...
+            </button>
+          ) : (
+            <button className="bg-[#ff6c31] py-2 px-4 rounded-xl">
+              Download PDF
+            </button>
+          )
+        }
       </PDFDownloadLink>
     </div>
   );
