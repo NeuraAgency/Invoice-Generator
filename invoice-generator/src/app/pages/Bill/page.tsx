@@ -5,7 +5,7 @@ import Preview from "./components/preview";
 
 const Page = () => {
   const [rows, setRows] = useState(
-    Array(8)
+    Array(7)
       .fill(0)
       .map(() => ({ qty: "", description: "", amount: "" }))
   );
