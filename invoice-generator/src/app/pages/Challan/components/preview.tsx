@@ -7,6 +7,7 @@ import {
   View,
   StyleSheet,
   PDFDownloadLink,
+  PDFViewer,
   Image,
 } from "@react-pdf/renderer";
 
@@ -37,7 +38,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'heavy',
     marginTop: 8,
-    marginBottom: 12,
+    marginBottom: 18,
     textAlign: "center",
   },
   tableHeader: {
@@ -52,7 +53,7 @@ const styles = StyleSheet.create({
     borderColor: "#000",
   },
   cell: {
-    padding: 8,
+    padding: 10,
     fontSize: 12,
     borderRightWidth: 1,
     borderColor: "#000",
@@ -90,6 +91,7 @@ interface InvoicePDFProps {
   GP: string;
   bill: string;
   Company_Name: string;
+  rows: { qty: string; description: string; amount: string }[];
 }
 
 const InvoicePDF: React.FC<InvoicePDFProps> = ({
@@ -99,69 +101,74 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
   GP,
   bill,
   Company_Name,
-}) => (
-  <Document>
-    <Page size="A4" style={styles.page}>
-      <Image src="/zumech.png" style={styles.logo} />
+  rows,
+}) => {
+  // Calculate total from all amounts
+  const total = rows.reduce((sum, row) => {
+    const amount = parseFloat(row.amount) || 0;
+    return sum + amount;
+  }, 0);
 
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
-          <Text style={styles.companyInfo}>Contact: 03092308078</Text>
-          <Text style={styles.companyInfo}>Bill No: {bill}</Text>
-          <Text style={styles.companyInfo}>Challan No: {challan}</Text>
-          <Text style={styles.companyInfo}>Date: {date}</Text>
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <Image src="/zumech.png" style={styles.logo} />
+
+        <View style={styles.header}>
+          <View>
+             <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
+            <Text style={styles.companyInfo}>Contact: 03092308078</Text>
+            <Text style={styles.companyInfo}>Bill No: {bill}</Text>
+            <Text style={styles.companyInfo}>Challan No: {challan}</Text>
+            <Text style={styles.companyInfo}>Date: {date}</Text>
+          </View>
+          <View>
+            <Text style={styles.companyInfo}>P.O. No: {PO}</Text>
+            <Text style={styles.companyInfo}>G.P. No: {GP}</Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.companyInfo}>P.O. No: {PO}</Text>
-          <Text style={styles.companyInfo}>G.P. No: {GP}</Text>
+
+        <Text style={styles.title}>Company Name: {Company_Name}</Text>
+        <Text style={styles.titleL}>Invoice</Text>
+
+        {/* Table Header */}
+        <View style={styles.tableHeader}>
+          <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>Qty</Text>
+          <Text style={[styles.cell, { flex: 8 }]}>Description</Text>
+          <Text style={[styles.cell, { flex: 2 }]}>Amount</Text>
         </View>
-      </View>
 
-      <Text style={styles.title}>Company Name: {Company_Name}</Text>
-      <Text style={styles.titleL}>Invoice</Text>
+        {/* Table Rows */}
+        {rows.map((row, idx) => (
+          <View key={idx} style={styles.tableRow}>
+            <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>{row.qty}</Text>
+            <Text style={[styles.cell, { flex: 8 }]}>{row.description}</Text>
+            <Text style={[styles.cell, { flex: 2, lineHeight: 0 }]}>{row.amount}</Text>
+          </View>
+        ))}
 
-      {/* Table Header */}
-      <View style={styles.tableHeader}>
-        <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>Qty</Text>
-        <Text style={[styles.cell, { flex: 8 }]}>Description</Text>
-        <Text style={[styles.cell, { flex: 2 }]}>Rate</Text>
-        <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}>
-          Amount
+        <View style={styles.totalRow}>
+          <Text>Total:</Text>
+          <Text>Rs. {total.toFixed(2)}</Text>
+        </View>
+
+        <Text style={styles.note}>
+          Note: This is a computer-generated document and does not require a
+          signature.
         </Text>
-      </View>
+      </Page>
+    </Document>
+  );
+};
 
-      {/* Table Rows */}
-      {[...Array(15)].map((_, idx) => (
-        <View
-          key={idx}
-          style={[
-            styles.tableRow,
-            idx === 14 ? { borderBottomWidth: 1, borderColor: "black" } : {},
-          ]}
-        >
-          <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}></Text>
-          <Text style={[styles.cell, { flex: 8 }]}></Text>
-          <Text style={[styles.cell, { flex: 2 }]}></Text>
-          <Text style={[styles.cell, { flex: 2, borderRightWidth: 1 }]}></Text>
-        </View>
-      ))}
-
-      <View style={styles.totalRow}>
-        <Text>Total:</Text>
-        <Text>Rs. 0.00</Text>
-      </View>
-
-      <Text style={styles.note}>
-        Note: This is a computer-generated document and does not require a
-        signature.
-      </Text>
-    </Page>
-  </Document>
-);
+interface RowData {
+  qty: string;
+  description: string;
+  amount: string;
+}
 
 // Main React component with Download button
-const Preview = () => {
+const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
   const date = new Date().toLocaleDateString();
   const PO = "00001";
   const challan = "00001";
@@ -171,6 +178,19 @@ const Preview = () => {
 
   return (
     <div className="flex flex-col items-start gap-6">
+      <div className="w-[700px] h-[900px] overflow-hidden rounded-xl shadow-lg p-4 mb-4">
+        <PDFViewer className="w-full h-full">
+          <InvoicePDF
+            date={date}
+            PO={PO}
+            challan={challan}
+            GP={GP}
+            bill={bill}
+            Company_Name={Company_Name}
+            rows={rows}
+          />
+        </PDFViewer>
+      </div>
       <PDFDownloadLink
         document={
           <InvoicePDF
@@ -180,21 +200,11 @@ const Preview = () => {
             GP={GP}
             bill={bill}
             Company_Name={Company_Name}
+            rows={rows}
           />
         }
         fileName={`Invoice-${bill}.pdf`}
       >
-        {({ loading }) =>
-          loading ? (
-            <button className="bg-gray-400 py-2 px-4 rounded-xl">
-              Generating PDF...
-            </button>
-          ) : (
-            <button className="bg-[#ff6c31] py-2 px-4 rounded-xl">
-              Download PDF
-            </button>
-          )
-        }
       </PDFDownloadLink>
     </div>
   );

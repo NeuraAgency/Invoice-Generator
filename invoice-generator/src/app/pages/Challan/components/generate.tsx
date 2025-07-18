@@ -1,7 +1,53 @@
+"use client";
 import Nav from "@/app/components/nav";
-import React from "react";
+import React, { useState } from "react";
 
-const generate = () => {
+interface RowData {
+  qty: string;
+  description: string;
+  amount: string;
+}
+
+interface GenerateProps {
+  rows: RowData[];
+  setRows: React.Dispatch<React.SetStateAction<RowData[]>>;
+  onConfirm: () => void;
+}
+
+const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editValues, setEditValues] = useState<RowData>({
+    qty: "",
+    description: "",
+    amount: "",
+  });
+
+  const handleEdit = (idx: number) => {
+    setEditIdx(idx);
+    setEditValues(rows[idx]);
+  };
+
+  const handleInputChange = (field: keyof RowData, value: string) => {
+    setEditValues((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = () => {
+    if (editIdx !== null) {
+      const updatedRows = [...rows];
+      updatedRows[editIdx] = editValues;
+      setRows(updatedRows);
+      setEditIdx(null);
+      onConfirm(); // if you want immediate preview update
+    }
+  };
+
+  const handleDelete = (idx: number) => {
+    const updatedRows = rows.filter((_, i) => i !== idx);
+    setRows(updatedRows);
+    setEditIdx(null);
+    onConfirm(); // if you want preview update on delete
+  };
+
   return (
     <div className="flex flex-col items-start justify-around w-full h-screen">
       <Nav
@@ -29,14 +75,76 @@ const generate = () => {
                   Description
                 </th>
                 <th className="px-4 py-2 border-b-4 border-black">Amount</th>
+                <th className="px-4 py-2 border-b-4 border-black">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {[...Array(8)].map((_, idx) => (
-                <tr key={idx} className="bg-[#e9c6b1] border-b-4 border-black">
-                  <td className="px-4 py-4 border-r-4 border-black"></td>
-                  <td className="px-4 py-4 border-r-4 border-black"></td>
-                  <td className="px-4 py-4"></td>
+              {rows.map((row, idx) => (
+                <tr
+                  key={idx}
+                  className="bg-[#e9c6b1] text-black border-b-4 border-black"
+                >
+                  <td className="px-4 py-2 border-r-4 border-black">
+                    {editIdx === idx ? (
+                      <input
+                        type="text"
+                        value={editValues.qty}
+                        onChange={(e) =>
+                          handleInputChange("qty", e.target.value)
+                        }
+                        className="w-full outline-none focus:ring-0 focus:border-transparent"
+                      />
+                    ) : (
+                      row.qty
+                    )}
+                  </td>
+                  <td className="px-4 py-2 border-r-4 border-black">
+                    {editIdx === idx ? (
+                      <input
+                      type="text"
+                      value={editValues.description}
+                      onChange={(e) => handleInputChange("description", e.target.value)}
+                      className="w-full outline-none focus:ring-0 focus:border-transparent"
+                  />
+                    ) : (
+                      row.description
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {editIdx === idx ? (
+                        <input
+                        type="text"
+                        value={editValues.amount}
+                        onChange={(e) => handleInputChange("amount", e.target.value)}
+                        className="w-full outline-none focus:ring-0 focus:border-transparent"
+                    />
+                    
+                    ) : (
+                      row.amount
+                    )}
+                  </td>
+                  <td className="px-4 py-2 flex gap-2">
+                    {editIdx === idx ? (
+                      <button onClick={handleSave}>
+                        <img
+                          src="/save.png"
+                          alt="Save"
+                          className="w-6 h-6 bg-center"
+                        />
+                      </button>
+                    ) : (
+                      <button onClick={() => handleEdit(idx)}>
+                        <img
+                          src="/edit.png"
+                          alt="Edit"
+                          className="w-6 h-6 bg-center"
+                        />
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(idx)}>
+                      <img src="/delete.png" alt="Delete" className="w-6 h-6" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -44,10 +152,15 @@ const generate = () => {
         </div>
       </div>
       <div>
-        <button className="bg-[#ff6c24] py-3 px-8  rounded-xl">Generate</button>
+        <button
+          className="bg-[#ff6c24] py-3 px-8 rounded-xl"
+          onClick={onConfirm}
+        >
+          Generate
+        </button>
       </div>
     </div>
   );
 };
 
-export default generate;
+export default Generate;
