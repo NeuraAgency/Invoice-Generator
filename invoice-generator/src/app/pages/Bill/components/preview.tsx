@@ -116,7 +116,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
 
         <View style={styles.header}>
           <View>
-            <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
+             <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
             <Text style={styles.companyInfo}>Contact: 03092308078</Text>
             <Text style={styles.companyInfo}>Bill No: {bill}</Text>
             <Text style={styles.companyInfo}>Challan No: {challan}</Text>
