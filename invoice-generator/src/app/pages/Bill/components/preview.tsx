@@ -83,7 +83,6 @@ const styles = StyleSheet.create({
   },
 });
 
-// PDF Document Component
 interface InvoicePDFProps {
   date: string;
   PO: string;
@@ -103,7 +102,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
   Company_Name,
   rows,
 }) => {
-  // Calculate total from all amounts
+
   const total = rows.reduce((sum, row) => {
     const amount = parseFloat(row.amount) || 0;
     return sum + amount;

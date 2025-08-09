@@ -7,7 +7,7 @@ const Page = () => {
   const [rows, setRows] = useState(
     Array(7)
       .fill(0)
-      .map(() => ({ qty: "", description: "", amount: "" }))
+      .map(() => ({ qty: "", description: ""}))
   );
   const [confirmedRows, setConfirmedRows] = useState(rows);
 

@@ -5,7 +5,6 @@ import React, { useState } from "react";
 interface RowData {
   qty: string;
   description: string;
-  amount: string;
 }
 
 interface GenerateProps {
@@ -19,7 +18,6 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [editValues, setEditValues] = useState<RowData>({
     qty: "",
     description: "",
-    amount: "",
   });
 
   const handleEdit = (idx: number) => {
@@ -37,7 +35,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       updatedRows[editIdx] = editValues;
       setRows(updatedRows);
       setEditIdx(null);
-      onConfirm(); // if you want immediate preview update
+      
     }
   };
 
@@ -74,15 +72,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                 <th className="px-4 py-2 border-b-4 border-r-4 border-black w-[80%]">
                   Description
                 </th>
-                <th className="px-4 py-2 border-b-4 border-black">Amount</th>
-                <th className="px-4 py-2 border-b-4 border-black">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, idx) => (
                 <tr
                   key={idx}
-                  className="bg-[#e9c6b1] text-black border-b-4 border-black"
+                  className="bg-[#e9c6b1] text-black border-b-4 h-9 border-black"
                 >
                   <td className="px-4 py-2 border-r-4 border-black">
                     {editIdx === idx ? (
@@ -110,20 +106,55 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                       row.description
                     )}
                   </td>
-                  <td className="px-4 py-2">
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <table className="min-w-[624px] border border-black text-left rounded-xl overflow-hidden">
+            <thead className="bg-[#ff6c31] text-white ">
+              <tr>
+                <th className="px-4 py-2 border-b-4 border-r-4 border-black w-[20%]">
+                  Qty
+                </th>
+                <th className="px-4 py-2 border-b-4 border-r-4 border-black w-[80%]">
+                  Description
+                </th>
+                <th className="px-4 py-2 border-b-4 border-black">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr
+                  key={idx}
+                  className="bg-[#e9c6b1] text-black border-b-4 h-9 border-black"
+                >
+                  <td className="px-4 py-2 border-r-4 border-black">
                     {editIdx === idx ? (
-                        <input
+                      <input
                         type="text"
-                        value={editValues.amount}
-                        onChange={(e) => handleInputChange("amount", e.target.value)}
+                        value={editValues.qty}
+                        onChange={(e) =>
+                          handleInputChange("qty", e.target.value)
+                        }
                         className="w-full outline-none focus:ring-0 focus:border-transparent"
-                    />
-                    
+                      />
                     ) : (
-                      row.amount
+                      row.qty
                     )}
                   </td>
-                  <td className="px-4 py-2 flex gap-2">
+                  <td className="px-4 py-2 border-r-4 border-black">
+                    {editIdx === idx ? (
+                      <input
+                      type="text"
+                      value={editValues.description}
+                      onChange={(e) => handleInputChange("description", e.target.value)}
+                      className="w-full outline-none focus:ring-0 focus:border-transparent"
+                  />
+                    ) : (
+                      row.description
+                    )}
+                  </td>
+                  <td className="px-4 py-1 flex gap-2">
                     {editIdx === idx ? (
                       <button onClick={handleSave}>
                         <img

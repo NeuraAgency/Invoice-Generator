@@ -91,7 +91,7 @@ interface InvoicePDFProps {
   GP: string;
   bill: string;
   Company_Name: string;
-  rows: { qty: string; description: string; amount: string }[];
+  rows: { qty: string; description: string}[];
 }
 
 const InvoicePDF: React.FC<InvoicePDFProps> = ({
@@ -99,15 +99,9 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
   PO,
   challan,
   GP,
-  bill,
   Company_Name,
   rows,
 }) => {
-  // Calculate total from all amounts
-  const total = rows.reduce((sum, row) => {
-    const amount = parseFloat(row.amount) || 0;
-    return sum + amount;
-  }, 0);
 
   return (
     <Document>
@@ -116,9 +110,8 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
 
         <View style={styles.header}>
           <View>
-             <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
+            <Text style={styles.companyInfo}>Email: z.ushahid@gmail.com</Text>
             <Text style={styles.companyInfo}>Contact: 03092308078</Text>
-            <Text style={styles.companyInfo}>Bill No: {bill}</Text>
             <Text style={styles.companyInfo}>Challan No: {challan}</Text>
             <Text style={styles.companyInfo}>Date: {date}</Text>
           </View>
@@ -129,29 +122,19 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
         </View>
 
         <Text style={styles.title}>Company Name: {Company_Name}</Text>
-        <Text style={styles.titleL}>Invoice</Text>
+        <Text style={styles.titleL}>Delivery Challan</Text>
 
-        {/* Table Header */}
         <View style={styles.tableHeader}>
           <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>Qty</Text>
           <Text style={[styles.cell, { flex: 8 }]}>Description</Text>
-          <Text style={[styles.cell, { flex: 2 }]}>Amount</Text>
         </View>
 
-        {/* Table Rows */}
         {rows.map((row, idx) => (
           <View key={idx} style={styles.tableRow}>
             <Text style={[styles.cell, { flex: 1, borderLeftWidth: 1 }]}>{row.qty}</Text>
             <Text style={[styles.cell, { flex: 8 }]}>{row.description}</Text>
-            <Text style={[styles.cell, { flex: 2, lineHeight: 0 }]}>{row.amount}</Text>
           </View>
         ))}
-
-        <View style={styles.totalRow}>
-          <Text>Total:</Text>
-          <Text>Rs. {total.toFixed(2)}</Text>
-        </View>
-
         <Text style={styles.note}>
           Note: This is a computer-generated document and does not require a
           signature.
@@ -164,7 +147,6 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({
 interface RowData {
   qty: string;
   description: string;
-  amount: string;
 }
 
 // Main React component with Download button
