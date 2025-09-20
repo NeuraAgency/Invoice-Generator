@@ -35,7 +35,6 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       updatedRows[editIdx] = editValues;
       setRows(updatedRows);
       setEditIdx(null);
-      
     }
   };
 
@@ -43,7 +42,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     const updatedRows = rows.filter((_, i) => i !== idx);
     setRows(updatedRows);
     setEditIdx(null);
-    onConfirm(); // if you want preview update on delete
+    onConfirm(); 
   };
 
   return (
@@ -55,15 +54,24 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
         name2="Inquery"
       />
       <div>
-        <div>
-          <h2 className="font-bold">Enter Challan Number</h2>
-          <input
-            type="text"
-            className="my-4 w-44 text-xl font-bold border-b-2 border-[#ff6c31] focus:outline-none transition-colors"
-          />
+        <div className="flex items-center gap-8">
+          <div>
+            <h2 className="font-bold">Enter GatePass Number</h2>
+            <input
+              type="text"
+              className="my-4 w-44 text-xl font-bold border-b-2 border-[#ff6c31] focus:outline-none transition-colors"
+            />
+          </div>
+          <div>
+            <h2 className="font-bold">Enter Purchase Number</h2>
+            <input
+              type="text"
+              className="my-4 w-44 text-xl font-bold border-b-2 border-[#ff6c31] focus:outline-none transition-colors"
+            />
+          </div> 
         </div>
         <div className="flex flex-col items-center">
-          <table className="min-w-[624px] border border-black text-left rounded-xl overflow-hidden my-12">
+          <table className="display min-w-[624px] border border-black text-left rounded-xl overflow-hidden my-12">
             <thead className="bg-[#ff6c31] text-white ">
               <tr>
                 <th className="px-4 py-2 border-b-4 border-r-4 border-black w-[20%]">
@@ -97,20 +105,23 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                   <td className="px-4 py-2 border-r-4 border-black">
                     {editIdx === idx ? (
                       <input
-                      type="text"
-                      value={editValues.description}
-                      onChange={(e) => handleInputChange("description", e.target.value)}
-                      className="w-full outline-none focus:ring-0 focus:border-transparent"
-                  />
+                        type="text"
+                        value={editValues.description}
+                        onChange={(e) =>
+                          handleInputChange("description", e.target.value)
+                        }
+                        className="w-full outline-none focus:ring-0 focus:border-transparent"
+                      />
                     ) : (
                       row.description
                     )}
                   </td>
+
                 </tr>
               ))}
             </tbody>
           </table>
-          <table className="min-w-[624px] border border-black text-left rounded-xl overflow-hidden">
+          <table className="generate min-w-[624px] border border-black text-left rounded-xl overflow-hidden">
             <thead className="bg-[#ff6c31] text-white ">
               <tr>
                 <th className="px-4 py-2 border-b-4 border-r-4 border-black w-[20%]">
@@ -145,11 +156,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                   <td className="px-4 py-2 border-r-4 border-black">
                     {editIdx === idx ? (
                       <input
-                      type="text"
-                      value={editValues.description}
-                      onChange={(e) => handleInputChange("description", e.target.value)}
-                      className="w-full outline-none focus:ring-0 focus:border-transparent"
-                  />
+                        type="text"
+                        value={editValues.description}
+                        onChange={(e) =>
+                          handleInputChange("description", e.target.value)
+                        }
+                        className="w-full outline-none focus:ring-0 focus:border-transparent"
+                      />
                     ) : (
                       row.description
                     )}
@@ -195,3 +208,4 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
 };
 
 export default Generate;
+   
