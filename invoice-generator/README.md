@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Invoice Generator
 
-## Getting Started
+AI-assisted invoice, challan, and quotation extraction tool built on Next.js 15. Users can upload document images, have Groq's multimodal LLM extract structured data, and store the normalized output in Supabase for later retrieval.
 
-First, run the development server:
+## Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- npm (bundled with Node) or your preferred package manager
+- Accounts and API keys for:
+	- [Groq](https://groq.com/) — used for multimodal data extraction
+	- [Supabase](https://supabase.com/) — used for persisting extracted documents
+
+## Environment Variables
+
+Create an `.env.local` file in the project root with the following values:
+
+```
+GROQ_API_KEY=your_groq_api_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> ⚠️ The Supabase **service role** key is required because the API route performs server-side inserts. Never expose it to the browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase Schema
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a table named `document_extractions` with columns capable of storing the normalized payload. A sample SQL migration:
 
-## Learn More
+```sql
+create table if not exists public.document_extractions (
+	id uuid primary key default gen_random_uuid(),
+	created_at timestamptz not null default now(),
+	document_no text,
+	document_date text,
+	items jsonb not null default '[]'::jsonb,
+	raw_text text
+);
+```
 
-To learn more about Next.js, take a look at the following resources:
+Adjust column names or types to match your downstream reporting needs. The API currently inserts one row per extraction request using these fields.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Running the App
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Install dependencies and start the dev server:
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Visit [http://localhost:3000](http://localhost:3000) to use the UI. Upload a document image via the relevant page and the extracted data will be persisted automatically in Supabase.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Troubleshooting
+
+- Ensure the Groq and Supabase environment variables are present before starting the server; the API will throw a 500 error if they are missing.
+- Check the `document_extractions` table in Supabase to verify incoming rows. Errors are logged server-side but don't block the HTTP response.

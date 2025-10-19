@@ -7,7 +7,7 @@ const Page = () => {
   const [rows, setRows] = useState(
     Array(7)
       .fill(0)
-      .map(() => ({ qty: "", description: ""}))
+      .map(() => ({ qty: "", description: "", indno: "" }))
   );
   const [confirmedRows, setConfirmedRows] = useState(rows);
 
@@ -16,7 +16,7 @@ const Page = () => {
   };
 
   return (
-    <div className="flex w-full h-screen items-center mx-14 gap-24">
+    <div className="flex h-screen items-center justify-around gap-8">
       <Generate
         rows={rows}
         setRows={setRows}

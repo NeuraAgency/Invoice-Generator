@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react'
 import { createWorker } from 'tesseract.js'
+import { PDFDocument } from 'pdf-lib'
+import { runAgent } from '../../agents/agents'
 
 const Page = () => {
   const [files, setFiles] = useState<File[]>([])
@@ -12,14 +14,65 @@ const Page = () => {
   const [selectedText, setSelectedText] = useState('')
   const [texts, setTexts] = useState<{ [key: string]: string }>({})
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files)
-      setFiles(prev => [...prev, ...newFiles])
-      setImage(newFiles[0])
-      setText('')
-      setSelectedFile(newFiles[0])
-      setSelectedText('')
+  const extractPDFText = async (file: File): Promise<string> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const pageCount = pdfDoc.getPageCount();
+      let extractedText = '';
+
+      for (let i = 0; i < pageCount; i++) {
+        const page = pdfDoc.getPage(i);
+        // pdf-lib does not support text extraction directly.
+        // You may use a placeholder or integrate another library for real extraction.
+        extractedText += '[Text extraction from PDF not supported by pdf-lib]\n';
+      }
+
+      return extractedText;
+    } catch (error) {
+      console.error('Error extracting PDF text:', error);
+      return 'Failed to extract text from PDF';
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return
+
+    const newFiles = Array.from(e.target.files)
+    setFiles(prev => [...prev, ...newFiles])
+
+    const file = newFiles[0]
+    setImage(file)
+    setSelectedFile(file)
+    setText('')
+    setSelectedText('')
+
+    if (file.type === 'application/pdf') {
+      setLoading(true)
+      try {
+        const extractedText = await extractPDFText(file)
+        setText(extractedText)
+        setTexts(prev => ({ ...prev, [file.name]: extractedText }))
+        setSelectedText(extractedText)
+      } catch (error) {
+        console.error('Error extracting PDF:', error)
+      } finally {
+        setLoading(false)
+      }
+    } else if (file.type.startsWith('image/')) {
+      setLoading(true)
+      try {
+        const extraction = await runAgent(file)
+        console.log('Gemini extraction result:', extraction)
+        const extractedText = extraction.raw ?? JSON.stringify(extraction, null, 2)
+        setText(extractedText)
+        setTexts(prev => ({ ...prev, [file.name]: extractedText }))
+        setSelectedText(extractedText)
+      } catch (error) {
+        console.error('Error extracting image text with agent:', error)
+      } finally {
+        setLoading(false)
+      }
     }
   }
 
