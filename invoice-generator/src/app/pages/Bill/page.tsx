@@ -1,7 +1,10 @@
 'use client';
 import React, { useState } from "react";
 import Generate from "./components/generate";
-import Preview from "./components/preview";
+import dynamic from 'next/dynamic';
+
+// Dynamically import Preview with SSR disabled to prevent server rendering of PDFViewer
+const Preview = dynamic(() => import('./components/preview'), { ssr: false });
 
 const Page = () => {
   const [rows, setRows] = useState(
