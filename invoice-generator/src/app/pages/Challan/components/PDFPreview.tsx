@@ -205,7 +205,7 @@ export default function Preview(props: PDFPreviewProps) {
       });
 
       // Render rows (text only)
-      let cursorY = tableTop - headerHeight - 10;
+      let cursorY = tableTop - headerHeight - 15;
       const maxDescriptionCharsPerLine = 60;
       for (let i = 0; i < Math.min(rows.length, totalRows); i++) {
         const r = rows[i];
