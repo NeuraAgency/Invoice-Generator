@@ -1,9 +1,0 @@
-{
-  "documentNo": "RT-3001-000753",
-  "date": "2025-10-15",
-  "materialNo": "\": \"7200012290\",",
-  "materialDescription": "\": \"SP MS HEX BOLT 16X65 WITH NUT\",",
-  "IND": null,
-  "quantityFromRemarks": null,
-  "raw": "{\n  \"documentNo\": \"RT-3001-000753\",\n  \"date\": \"2025-10-15\",\n  \"IND\": [\n    {\n      \"materialNo\": \"7200012290\",\n      \"materialDescription\": \"SP MS HEX BOLT 16X65 WITH NUT\",\n      \"quantityFromRemarks\": \"50\"\n    },\n    {\n      \"materialNo\": \"7200027869\",\n      \"materialDescription\": \"SP GEAR COUPLING APS\",\n      \"quantityFromRemarks\": \"08\"\n    },\n    {\n      \"materialNo\": \"7200006944\",\n      \"materialDescription\": \"SP HELICAL GEAR 23TEETH\",\n      \"quantityFromRemarks\": \"08\"\n    }\n  ]\n}"
-}

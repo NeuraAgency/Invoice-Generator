@@ -6,6 +6,7 @@ import { getSupabaseAdminClient } from "../../../lib/supabaseServer";
 interface DocumentExtraction {
   documentNo?: string | null;
   date?: string | null;
+  fileUrl?: string | null;
   items?: Array<{
     indNo: string | null;
     materialNo: string | null;
@@ -45,7 +46,7 @@ Rules:
 
 export async function POST(request: Request) {
   try {
-    const { base64Image, mimeType } = await request.json();
+  const { base64Image, mimeType, fileUrl } = await request.json();
 
     if (!base64Image || typeof base64Image !== "string") {
       return NextResponse.json(
@@ -163,6 +164,7 @@ export async function POST(request: Request) {
         valueFromParsed(["date", "Date", "Challan Date", "Invoice Date"]) ??
         normalizedDoc.date ??
         findDate(),
+      fileUrl: typeof fileUrl === 'string' ? fileUrl : null,
       items: normalizedDoc.items,
     };
 
@@ -176,6 +178,7 @@ export async function POST(request: Request) {
           document_date: result.date,
           items: result.items ?? [],
           raw_text: text,
+          URL: result.fileUrl ?? null,
         });
 
       if (insertError) {
@@ -193,4 +196,9 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "Failed to process image";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+// Simple health check so hitting GET /api/extract returns 200 instead of 404 (helps diagnose routing issues)
+export async function GET() {
+  return NextResponse.json({ status: 'ok' });
 }

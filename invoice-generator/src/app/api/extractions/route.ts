@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
     let query = supabase
       .from("document_extractions")
-      .select("id, document_no, document_date, items")
+      .select("id, document_no, document_date, items, URL")
       .order("created_at", { ascending: false })
       .limit(limit);
 

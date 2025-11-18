@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createWorker } from 'tesseract.js'
 import { PDFDocument } from 'pdf-lib'
 import { runAgent } from '../../agents/agents'
 
 const Page = () => {
+  // Local uploaded files (kept if still needed for OCR preview) but display will use DB docs
   const [files, setFiles] = useState<File[]>([])
   const [image, setImage] = useState<File | null>(null)
   const [text, setText] = useState('')
@@ -13,6 +14,34 @@ const Page = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedText, setSelectedText] = useState('')
   const [texts, setTexts] = useState<{ [key: string]: string }>({})
+  const [docs, setDocs] = useState<Array<{ id: number; document_no: string | null; document_date: string | null; URL: string | null; items?: any }>>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [docsError, setDocsError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  // Fetch persisted documents from database
+  const fetchDocs = async () => {
+    try {
+      setDocsLoading(true)
+      setDocsError(null)
+      const res = await fetch('/api/extractions?limit=50')
+      if (!res.ok) {
+        throw new Error(`Failed to load documents: ${res.status}`)
+      }
+      const data = await res.json()
+      setDocs(Array.isArray(data) ? data : [])
+    } catch (e: any) {
+      setDocsError(e.message || 'Unknown error loading documents')
+    } finally {
+      setDocsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDocs()
+  }, [])
+
+  const isImageUrl = (u: string) => /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u)
 
   const extractPDFText = async (file: File): Promise<string> => {
     try {
@@ -144,32 +173,94 @@ const Page = () => {
     }
   }
 
-  const fileList = files
+  // We display database docs instead of recently uploaded local files
 
   return (
     <div className="w-screen h-screen bg-black flex items-center justify-center p-7">
       <div className="flex w-full h-full max-w-[1600px] gap-6 p-8">
         <div className="w-1/2 flex flex-col gap-2 max-h-full overflow-y-auto">
-          {fileList.length === 0 ? (
-            <div className="text-orange-400 text-center mt-8">No files uploaded</div>
-          ) : fileList.map((file, i) => (
-            <div key={i} className="w-11/12 flex items-center justify-between bg-black border border-orange-500 rounded-lg px-4 py-3 text-white hover:border-orange-400 transition-all">
-              <span className="truncate">{file.name}</span>
-              <div className="flex items-center gap-3">
-                <button 
-                  className="hover:text-orange-400" 
-                  onClick={() => handleDelete(file)}
-                >
-                  <img src="/trash.png" alt="delete" className="w-5" />
-                </button>
-                <button className="hover:text-orange-400" onClick={() => {
-                  setSelectedFile(file)
-                  setSelectedText(texts[file.name] || '')
-                  setImage(file)
-                  setText(texts[file.name] || '')
-                }}>
-                  <img src="/eye.png" alt="show" className="w-6" />
-                </button>
+          <div className="flex items-end justify-between gap-3 mb-2">
+            <h2 className="text-orange-400 font-semibold">Documents</h2>
+            <div className="flex items-end gap-4">
+              <div className="flex flex-col">
+                <h2 className="font-semibold text-sm text-white">Enter GatePass Number</h2>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search GP"
+                  className="my-2 w-40 text-sm border-b-2 border-[#ff6c31] focus:outline-none bg-transparent text-white placeholder:text-white/50"
+                />
+              </div>
+              <button
+                onClick={fetchDocs}
+                className="text-sm px-2 py-1 border border-orange-500 text-orange-300 rounded hover:bg-orange-600 hover:text-white transition"
+                disabled={docsLoading}
+              >
+                {docsLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+          {docsError && (
+            <div className="text-red-500 text-sm mb-2">{docsError}</div>
+          )}
+          {(!docsLoading && docs.length === 0) && (
+            <div className="text-orange-400 text-center mt-8">No documents found</div>
+          )}
+          {(docs
+            .filter(doc => {
+              if (!search.trim()) return true
+              const q = search.trim().toLowerCase()
+              const inDocNo = (doc.document_no || '').toLowerCase().includes(q)
+              const inItems = Array.isArray(doc.items) && doc.items.some((it: any) => {
+                const d1 = (it.materialDescription || '').toLowerCase().includes(q)
+                const d2 = (it.materialNo || '').toLowerCase().includes(q)
+                const d3 = (it.indNo || it.IND || '').toLowerCase().includes(q)
+                const d4 = (it.quantityFromRemarks || '').toLowerCase().includes(q)
+                return d1 || d2 || d3 || d4
+              })
+              return inDocNo || inItems
+            }))
+          .map(doc => (
+            <div
+              key={doc.id}
+              className="w-11/12 flex items-center gap-3 bg-black border border-orange-500 rounded-lg px-4 py-3 text-white hover:border-orange-400 transition-all"
+            >
+              {/* Preview (image if possible) */}
+              <div className="flex-shrink-0">
+                {doc.URL && isImageUrl(doc.URL) ? (
+                  <img
+                    src={doc.URL}
+                    alt={doc.document_no ?? `Document-${doc.id}`}
+                    className="h-16 w-16 object-cover rounded bg-white"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-16 w-16 flex items-center justify-center rounded bg-gray-800 text-xs text-gray-300">
+                    No Preview
+                  </div>
+                )}
+              </div>
+
+              {/* Meta (Gatepass no, date, and URL link) */}
+              <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate font-medium">
+                    {doc.document_no || '—'}
+                  </span>
+                  <span className="text-xs text-orange-300 whitespace-nowrap">
+                    {doc.document_date || '—'}
+                  </span>
+                </div>
+                {doc.URL && (
+                  <a
+                    href={doc.URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:underline break-all"
+                  >
+                    {doc.URL}
+                  </a>
+                )}
               </div>
             </div>
           ))}
@@ -199,12 +290,21 @@ const Page = () => {
             onChange={handleFileChange} 
             className="hidden" 
           />
-          <button
-            className="bg-orange-600 text-white font-bold px-2 py-2 w-1/6 rounded-lg "
-            onClick={() => document.getElementById('file-upload')?.click()}
-          >
-            Upload File
-          </button>
+          <div className="flex gap-3">
+            <button
+              className="inline-flex items-center justify-center rounded-md bg-orange-600 px-4 py-2 h-10 min-w-[130px] text-sm font-semibold text-white shadow-sm hover:bg-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => document.getElementById('file-upload')?.click()}
+            >
+              Upload File
+            </button>
+            <button
+              className="inline-flex items-center justify-center rounded-md bg-gray-700 px-4 py-2 h-10 min-w-[130px] text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={fetchDocs}
+              disabled={docsLoading}
+            >
+              {docsLoading ? 'Loading…' : 'Load Docs'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
