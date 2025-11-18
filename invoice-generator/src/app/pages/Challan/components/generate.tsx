@@ -72,6 +72,12 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
   const [loading, setLoading] = useState<boolean>(false);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
 
+  // ----- NEW STATE -----
+  const [poNo, setPoNo] = useState<string>(""); // controlled Purchase Order input
+  const [generating, setGenerating] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // ----- END NEW STATE -----
+
   useEffect(() => {
     if (!gpQuery) {
       setSuggestions([]);
@@ -138,6 +144,66 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
     onConfirm();
   };
 
+  // ----- NEW: handleGenerate sends POST to /api/challan -----
+  const handleGenerate = async () => {
+    setErrorMsg(null);
+    setGenerating(true);
+
+    try {
+      const payload = {
+        Date: new Date().toISOString().split("T")[0],
+        PO: poNo || "00000",
+        GP: gpQuery || rows?.[0]?.gpno || "",
+        Industry: "", // adjust if you add an Industry input
+        Description: rows.map((r) => ({
+          qty: r.qty,
+          description: r.description,
+          indNo: r.indno,
+        })),
+      };
+
+      const res = await fetch("/api/challan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || `HTTP ${res.status}`);
+      }
+
+      const body = await res.json();
+      // body may be { data, challan } from API
+      const returnedChallan = body?.challan ?? (Array.isArray(body?.data) ? (body.data[0]?.id ? String(body.data[0].id).padStart(5,'0') : null) : (body?.data?.id ? String(body.data.id).padStart(5,'0') : null));
+      
+      // persist PO and challan so PDF preview can pick them up if parent doesn't wire props
+      try {
+        localStorage.setItem("latestPO", String(payload.PO ?? ""));
+        if (returnedChallan) {
+          localStorage.setItem("latestChallan", returnedChallan);
+          // notify same-tab listeners that a new challan is available
+          try {
+            window.dispatchEvent(new CustomEvent("latestChallanUpdated", { detail: { challan: returnedChallan } }));
+          } catch (e) {
+            // ignore if dispatch fails in some env
+          }
+        }
+      } catch (e) {
+        /* ignore storage errors */
+      }
+
+      // success: notify parent and keep gp state
+      onConfirm();
+    } catch (err: any) {
+      console.error("Generate failed:", err);
+      setErrorMsg(err?.message || "Failed to generate challan");
+    } finally {
+      setGenerating(false);
+    }
+  };
+  // ----- END NEW -----
+
   return (
     <div className="flex flex-col items-start px-8 py-6">
       <Nav href1="./generate" name1="Generate" href2="./inquery" name2="Inquery" />
@@ -186,9 +252,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           </div>
           <div>
             <h2 className="font-semibold text-sm text-white">Enter Purchase Number</h2>
+            {/* Controlled PO input so we can POST it */}
             <input
               type="text"
+              value={poNo}
+              onChange={(e) => setPoNo(e.target.value)}
               className="my-2 w-40 text-sm border-b-2 border-[#ff6c31] focus:outline-none bg-transparent text-white"
+              placeholder="P.O. No"
             />
           </div>
         </div>
@@ -288,11 +358,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
       <div className="mt-6">
         <button
-          className="bg-[#ff6c24] py-2 px-6 rounded-lg text-sm font-medium text-white hover:opacity-90 transition"
-          onClick={onConfirm}
+          className="bg-[#ff6c24] py-2 px-6 rounded-lg text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-60"
+          onClick={handleGenerate}
+          disabled={generating}
         >
-          Generate
+          {generating ? "Generating…" : "Generate"}
         </button>
+        {errorMsg && <div className="text-red-400 text-sm mt-2">{errorMsg}</div>}
       </div>
     </div>
   );

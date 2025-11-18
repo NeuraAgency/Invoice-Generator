@@ -12,11 +12,54 @@ interface RowData {
 type PDFPreviewProps = {
   rows: RowData[];
   gpno?: string;
+  po?: string | null;
+  challan?: string | null;
 };
 
 export default function Preview(props: PDFPreviewProps) {
   const { rows } = props;
   const effectiveGpNo = props.gpno ?? rows?.[0]?.gpno ?? "";
+  // prefer explicit props; fall back to persisted values
+  const [effectivePo, setEffectivePo] = useState<string>(props.po ?? "");
+  const [effectiveChallan, setEffectiveChallan] = useState<string>(props?.challan ?? "");
+
+  useEffect(() => {
+    if (props?.po) {
+      setEffectivePo(props.po);
+    } else {
+      try {
+        setEffectivePo(localStorage.getItem("latestPO") ?? "");
+      } catch (e) {
+        setEffectivePo("");
+      }
+    }
+
+    if (props?.challan) {
+      setEffectiveChallan(props.challan);
+    } else {
+      try {
+        setEffectiveChallan(localStorage.getItem("latestChallan") ?? "");
+      } catch (e) {
+        setEffectiveChallan("");
+      }
+    }
+  // re-evaluate when props change or rows change (Generate calls onConfirm which usually triggers re-render)
+  }, [props.po, props.challan, rows]);
+
+  // Listen for in-tab challan updates dispatched by Generate so preview updates immediately
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent)?.detail;
+        if (detail?.challan) setEffectiveChallan(String(detail.challan));
+      } catch (err) {
+        // ignore
+      }
+    };
+    window.addEventListener("latestChallanUpdated", handler as EventListener);
+    return () => window.removeEventListener("latestChallanUpdated", handler as EventListener);
+  }, []);
+
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -105,8 +148,8 @@ export default function Preview(props: PDFPreviewProps) {
       const smallSize = 10;
 
       const date = new Date().toLocaleDateString();
-      const PO = "00001";
-      const challan = "00001";
+      const PO = effectivePo || "";
+      const challan = effectiveChallan || "";
       const Company_Name = "Kassim Textile Mills Limited";
 
       drawLabelValue("Email", "z.ushahid@gmail.com", leftColX, topAfterLogo, smallSize);
@@ -272,9 +315,9 @@ export default function Preview(props: PDFPreviewProps) {
         URL.revokeObjectURL(pdfUrl);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
-
+    // regenerate when rows or challan/po change
+  }, [rows, effectiveChallan, effectivePo]);
+ 
   return (
     <div className="flex flex-col items-center mt-20">
       {pdfUrl ? (
@@ -288,4 +331,4 @@ export default function Preview(props: PDFPreviewProps) {
       )}
     </div>
   );
-}
+ }
