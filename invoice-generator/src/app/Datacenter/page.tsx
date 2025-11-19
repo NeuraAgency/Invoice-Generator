@@ -180,7 +180,7 @@ const Page = () => {
       <div className="flex w-full h-full max-w-[1600px] gap-6 p-8">
         <div className="w-1/2 flex flex-col gap-2 max-h-full overflow-y-auto">
           <div className="flex items-end justify-between gap-3 mb-2">
-            <h2 className="text-orange-400 font-semibold">Documents</h2>
+                <h2 className="text-[var(--accent)] font-semibold">Documents</h2>
             <div className="flex items-end gap-4">
               <div className="flex flex-col">
                 <h2 className="font-semibold text-sm text-white">Enter GatePass Number</h2>
@@ -188,12 +188,12 @@ const Page = () => {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search GP"
-                  className="my-2 w-40 text-sm border-b-2 border-[#ff6c31] focus:outline-none bg-transparent text-white placeholder:text-white/50"
+                  className="my-2 w-40 text-sm border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50"
                 />
               </div>
               <button
                 onClick={fetchDocs}
-                className="text-sm px-2 py-1 border border-orange-500 text-orange-300 rounded hover:bg-orange-600 hover:text-white transition"
+                className="text-sm px-2 py-1 border border-[var(--accent)] text-[var(--accent)] rounded hover:bg-[var(--accent)] hover:text-white transition"
                 disabled={docsLoading}
               >
                 {docsLoading ? 'Refreshing...' : 'Refresh'}
@@ -204,7 +204,7 @@ const Page = () => {
             <div className="text-red-500 text-sm mb-2">{docsError}</div>
           )}
           {(!docsLoading && docs.length === 0) && (
-            <div className="text-orange-400 text-center mt-8">No documents found</div>
+            <div className="text-[var(--accent)] text-center mt-8">No documents found</div>
           )}
           {(docs
             .filter(doc => {
@@ -247,7 +247,7 @@ const Page = () => {
                   <span className="truncate font-medium">
                     {doc.document_no || '—'}
                   </span>
-                  <span className="text-xs text-orange-300 whitespace-nowrap">
+                  <span className="text-xs text-[var(--accent)] whitespace-nowrap">
                     {doc.document_date || '—'}
                   </span>
                 </div>

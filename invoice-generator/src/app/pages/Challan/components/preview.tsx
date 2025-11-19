@@ -15,7 +15,7 @@ export default function PreviewWrapper(props: PreviewProps) {
   const effectiveGpNo = gpno ?? rows?.[0]?.gpno ?? "";
 
   return (
-    <div className="flex justify-center">
+    <div className="w-full h-[calc(100vh-48px)] lg:h-[calc(100vh-64px)] flex items-start justify-start">
       <PDFPreview rows={rows} gpno={effectiveGpNo} />
     </div>
   );

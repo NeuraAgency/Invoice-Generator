@@ -205,27 +205,27 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
   // ----- END NEW -----
 
   return (
-    <div className="flex flex-col items-start px-8 py-6">
+    <div className="flex flex-col items-start px-6 py-4">
       <Nav href1="./generate" name1="Generate" href2="./inquery" name2="Inquery" />
 
       <div className="w-full mt-8">
-        <div className="flex flex-wrap gap-12 items-center">
+        <div className="flex flex-wrap gap-8 items-center">
           <div className="relative">
-            <h2 className="font-semibold text-sm text-white">Enter GatePass Number</h2>
+            <h2 className="font-semibold text-xs text-white">Enter GatePass Number</h2>
             <input
               type="text"
               value={gpQuery}
               onChange={(e) => setGpQuery(e.target.value)}
               onFocus={() => gpQuery && setShowSuggestions(true)}
-              className="my-2 w-40 text-sm border-b-2 border-[#ff6c31] focus:outline-none bg-transparent text-white placeholder:text-white/50"
+              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50"
               placeholder="Search GP"
             />
             {showSuggestions && (
               <div className="absolute z-10 mt-1 w-64 max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200">
                 {loading ? (
-                  <div className="px-3 py-2 text-sm text-gray-500">Searching…</div>
+                  <div className="px-3 py-2 text-xs text-gray-500">Searching…</div>
                 ) : suggestions.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-gray-500">No results</div>
+                  <div className="px-3 py-2 text-xs text-gray-500">No results</div>
                 ) : (
                   <ul className="divide-y divide-gray-200">
                     {suggestions.map((sug: any, i: number) => (
@@ -236,7 +236,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
                           onClick={() => handleSelectSuggestion(sug)}
                           className="w-full text-left px-3 py-2 hover:bg-gray-100"
                         >
-                          <div className="text-sm font-medium">
+                          <div className="text-xs font-medium">
                             Document No: {String(sug?.document_no ?? "-")}
                           </div>
                           {sug?.document_date && (
@@ -251,13 +251,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
             )}
           </div>
           <div>
-            <h2 className="font-semibold text-sm text-white">Enter Purchase Number</h2>
+            <h2 className="font-semibold text-xs text-white">Enter Purchase Number</h2>
             {/* Controlled PO input so we can POST it */}
             <input
               type="text"
               value={poNo}
               onChange={(e) => setPoNo(e.target.value)}
-              className="my-2 w-40 text-sm border-b-2 border-[#ff6c31] focus:outline-none bg-transparent text-white"
+              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="P.O. No"
             />
           </div>
@@ -265,13 +265,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
         <div className="flex flex-col items-center mt-8 space-y-8">
           {/* Display table populated from selected GatePass */}
-          <table className="display min-w-[620px] border border-black text-left rounded-xl overflow-hidden text-sm">
-            <thead className="bg-[#ff6c31] text-white text-xs uppercase">
+          <table className="display w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
+            <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>
-                <th className="px-3 py-1.5 border-b-2 border-r-2 border-black w-[20%]">
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[20%]">
                   Qty
                 </th>
-                <th className="px-3 py-1.5 border-b-2 border-black w-[80%]">
+                <th className="px-2.5 py-1 border-b-2 border-black w-[80%]">
                   Description
                 </th>
               </tr>
@@ -280,48 +280,48 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
               {rows.map((row, idx) => (
                 <tr
                   key={idx}
-                  className="bg-[#f2d3be] text-black border-b-2 border-black h-7"
+                  className="bg-[#f2d3be] text-black border-b-2 border-black h-6"
                 >
-                  <td className="px-3 py-1.5 border-r-2 border-black text-center">
+                  <td className="px-2.5 py-1 border-r-2 border-black text-center">
                     {row.qty}
                   </td>
-                  <td className="px-3 py-1.5">{row.description}</td>
+                  <td className="px-2.5 py-1">{row.description}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
           {/* Generate Table (Editable with actions) */}
-          <table className="generate min-w-[620px] border border-black text-left rounded-xl overflow-hidden text-sm">
-            <thead className="bg-[#ff6c31] text-white text-xs uppercase">
+          <table className="generate w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
+            <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>
-                <th className="px-3 py-1.5 border-b-2 border-r-2 border-black w-[20%]">
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[20%]">
                   Qty
                 </th>
-                <th className="px-3 py-1.5 border-b-2 border-r-2 border-black w-[65%]">
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[65%]">
                   Description
                 </th>
-                <th className="px-3 py-1.5 border-b-2 border-black text-center">
+                <th className="px-2.5 py-1 border-b-2 border-black text-center">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, idx) => (
-                <tr key={idx} className="bg-[#f2d3be] text-black border-b-2 border-black h-7">
-                  <td className="px-3 py-1.5 border-r-2 border-black text-center">
+                <tr key={idx} className="bg-[#f2d3be] text-black border-b-2 border-black h-6">
+                  <td className="px-2.5 py-1 border-r-2 border-black text-center">
                     {editIdx === idx ? (
                       <input
                         type="text"
                         value={editValues.qty}
                         onChange={(e) => handleInputChange("qty", e.target.value)}
-                        className="w-full text-sm outline-none bg-transparent text-center"
+                        className="w-full text-xs outline-none bg-transparent text-center"
                       />
                     ) : (
                       row.qty
                     )}
                   </td>
-                  <td className="px-3 py-1.5 border-r-2 border-black">
+                  <td className="px-2.5 py-1 border-r-2 border-black">
                     {editIdx === idx ? (
                       <input
                         type="text"
@@ -329,7 +329,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
                         onChange={(e) =>
                           handleInputChange("description", e.target.value)
                         }
-                        className="w-full text-sm outline-none bg-transparent"
+                        className="w-full text-xs outline-none bg-transparent"
                       />
                     ) : (
                       row.description
@@ -358,13 +358,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
       <div className="mt-6">
         <button
-          className="bg-[#ff6c24] py-2 px-6 rounded-lg text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-60"
+          className="bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-60"
           onClick={handleGenerate}
           disabled={generating}
         >
           {generating ? "Generating…" : "Generate"}
         </button>
-        {errorMsg && <div className="text-red-400 text-sm mt-2">{errorMsg}</div>}
+        {errorMsg && <div className="text-red-400 text-xs mt-2">{errorMsg}</div>}
       </div>
     </div>
   );

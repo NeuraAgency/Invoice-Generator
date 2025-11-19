@@ -5,20 +5,29 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { gp, limit } = req.query
+      const { challan, limit } = req.query
 
-      // If gp query provided, perform a case-insensitive prefix search on GP
-      if (gp && typeof gp === 'string') {
+      // If challan query provided, perform a prefix search on challanno
+      if (challan && typeof challan === 'string') {
         const lim = Number(limit) || 10
-        const { data, error } = await supabase
-          .from('DeliveryChallan')
-          .select('*')
-          .ilike('GP', `${gp}%`)
-          .order('created_at', { ascending: false })
-          .limit(lim)
 
-        if (error) return res.status(500).json({ error: error.message })
-        return res.status(200).json(data)
+        // challanno is stored as a number; we support simple prefix search
+        // by interpreting the query as a number and filtering rows whose
+        // challanno starts with the provided digits.
+        const parsed = Number(challan.replace(/\D/g, ''))
+
+        if (!Number.isNaN(parsed)) {
+          const { data, error } = await supabase
+            .from('DeliveryChallan')
+            .select('*')
+            .gte('challanno', parsed)
+            .lt('challanno', parsed * 10)
+            .order('created_at', { ascending: false })
+            .limit(lim)
+
+          if (error) return res.status(500).json({ error: error.message })
+          return res.status(200).json(data)
+        }
       }
 
       // Default: return all (existing behavior)
@@ -34,55 +43,70 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { Date, PO, GP, Industry, Description } = req.body
 
-      // Determine previous challan: prefer challanno, else fallback to id
-      let prevNumber = 0
+      // Compute base next number: scan recent rows and find max numeric challanno
+      let baseNext = 1
       try {
-        const { data: lastRows, error: lastErr } = await supabase
+        const { data: recent } = await supabase
           .from('DeliveryChallan')
           .select('challanno,id')
           .order('id', { ascending: false })
-          .limit(1)
+          .limit(100)
 
-        if (!lastErr && Array.isArray(lastRows) && lastRows.length > 0) {
-          const last = lastRows[0]
-          if (last?.challanno) {
-            // extract numeric part (handles padded strings)
-            const digits = String(last.challanno).replace(/\D/g, '')
-            const n = Number(digits)
-            if (!Number.isNaN(n)) prevNumber = n
-            else if (last?.id) prevNumber = Number(last.id) || 0
-          } else if (last?.id) {
-            prevNumber = Number(last.id) || 0
+        if (Array.isArray(recent) && recent.length > 0) {
+          let maxSeen = 0
+          for (const r of recent) {
+            const num = Number(String(r?.challanno ?? '').replace(/\D/g, ''))
+            if (!Number.isNaN(num)) maxSeen = Math.max(maxSeen, num)
           }
+          baseNext = maxSeen + 1
         }
       } catch (e) {
-        // ignore and default prevNumber = 0
+        baseNext = 1
       }
 
-      const nextNumber = prevNumber + 1
-      const challan = String(nextNumber).padStart(5, '0')
+      // Try to insert; if PK conflict on challanno, bump and retry a few times
+      const maxAttempts = 5
+      let attempt = 0
+      let lastErr = null
+      while (attempt < maxAttempts) {
+        const candidate = baseNext + attempt
+        const challanStr = String(candidate).padStart(5, '0')
 
-      // Insert the new row including the computed ChallanNo
-      const { data, error } = await supabase
-        .from('DeliveryChallan')
-        .insert(
-          [
-            {
-              Date,
-              PO,
-              GP,
-              Industry,
-              Description,
-              challanno: challan
-            }
-          ],
-          { returning: 'representation' }
-        )
-        .select('*')
-        .single()
+        const { data, error } = await supabase
+          .from('DeliveryChallan')
+          .insert(
+            [
+              {
+                Date,
+                PO,
+                GP,
+                Industry,
+                Description,
+                challanno: candidate
+              }
+            ],
+            { returning: 'representation' }
+          )
+          .select('*')
+          .single()
 
-      if (error) return res.status(500).json({ error: error.message })
-      return res.status(201).json({ data, challan })
+        if (!error) {
+          return res.status(201).json({ data, challan: challanStr })
+        }
+
+        // Unique violation (duplicate challanno) — try next number
+        if (error?.code === '23505' || /duplicate key value/i.test(String(error?.message))) {
+          lastErr = error
+          attempt += 1
+          continue
+        }
+
+        // Other errors: bail out
+        return res.status(500).json({ error: error.message })
+      }
+
+      // If we got here, we ran out of attempts due to contention
+      return res.status(409).json({ error: 'Could not allocate a unique challan number. Please retry.' })
     }
 
     return res.status(405).json({ error: 'Method not allowed' })

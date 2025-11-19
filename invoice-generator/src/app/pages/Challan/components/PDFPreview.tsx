@@ -304,7 +304,10 @@ export default function Preview(props: PDFPreviewProps) {
 
       // Finalize
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      // Ensure we provide a concrete ArrayBuffer (not ArrayBufferLike/SharedArrayBuffer)
+      const ab = new ArrayBuffer(pdfBytes.byteLength);
+      new Uint8Array(ab).set(pdfBytes);
+      const blob = new Blob([ab], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       setPdfUrl(url);
     }
@@ -319,11 +322,11 @@ export default function Preview(props: PDFPreviewProps) {
   }, [rows, effectiveChallan, effectivePo]);
  
   return (
-    <div className="flex flex-col items-center mt-20">
+    <div className="w-full h-full flex items-start justify-start">
       {pdfUrl ? (
         <iframe
           src={pdfUrl}
-          className="w-[700px] h-[900px] border shadow-lg"
+          className="w-full h-full border shadow-lg"
           title="PDF Preview"
         />
       ) : (

@@ -19,13 +19,17 @@ const Page = () => {
   };
 
   return (
-    <div className="flex w-full h-screen items-center mx-14 gap-24">
-      <Generate
-        rows={rows}
-        setRows={setRows}
-        onConfirm={handleConfirm}
-      />
-      <Preview rows={confirmedRows} />
+    <div className="flex h-screen w-full items-start gap-5 lg:gap-7 p-4 lg:p-6 overflow-hidden">
+      <div className=" w-[560px] xl:w-[620px]">
+        <Generate
+          rows={rows}
+          setRows={setRows}
+          onConfirm={handleConfirm}
+        />
+      </div>
+      <div className="flex-1">
+        <Preview rows={confirmedRows} />
+      </div>
     </div>
   );
 };
