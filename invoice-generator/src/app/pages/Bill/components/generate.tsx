@@ -179,10 +179,10 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   return (
     <div className="flex flex-col items-start px-6 py-4">
       <Nav
-        href1="/pages/Bill"
-        name1="Generate"
-        href2="/pages/Bill/inquery"
-        name2="Inquery"
+      href1="/Bill"
+      name1="Generate"
+      href2="/Bill/inquery"
+      name2="Inquery"
       />
 
       <div className="w-full mt-8">

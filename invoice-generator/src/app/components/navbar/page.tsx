@@ -31,21 +31,21 @@ const Navbar = () => {
           <span className="nav-label">Purchase Order and Gate Pass</span>
         </Link>
 
-        <Link href='/pages/Challan' className={`nav-link roundborder2 ${makeActive('/pages/Challan') ? 'active' : ''}`}>
+        <Link href='/Challan' className={`nav-link roundborder2 ${makeActive('/Challan') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
           </span>
           <span className="nav-label">Generate Delivery Challan</span>
         </Link>
 
-        <Link href='/pages/Bill' className={`nav-link roundborder2 ${makeActive('/pages/Bill') ? 'active' : ''}`}>
+        <Link href='/Bill' className={`nav-link roundborder2 ${makeActive('/Bill') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v6H4z" fill="currentColor"/><path d="M4 14h16v6H4z" fill="currentColor"/></svg>
           </span>
           <span className="nav-label">Generate Invoices</span>
         </Link>
 
-        <Link href='/pages/Quotation' className={`nav-link roundborder2 ${makeActive('/pages/Quotation') ? 'active' : ''}`}>
+        <Link href='/Quotation' className={`nav-link roundborder2 ${makeActive('/Quotation') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16v10H4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </span>

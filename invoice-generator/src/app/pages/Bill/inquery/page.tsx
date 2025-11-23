@@ -99,7 +99,7 @@ const InvoiceInqueryPage = () => {
       <div className="flex-1 min-w-0">
         <div className="rounded-xl bg-black p-4 lg:p-6 shadow text-white">
           <div className="mb-4">
-            <Nav href1="/pages/Bill" name1="Generate" href2="/pages/Bill/inquery" name2="Inquery" />
+            <Nav href1="/Bill" name1="Generate" href2="/Bill/inquery" name2="Inquery" />
           </div>
           <h1 className="text-base lg:text-lg font-semibold mb-3">Invoice Inquiry</h1>
 
