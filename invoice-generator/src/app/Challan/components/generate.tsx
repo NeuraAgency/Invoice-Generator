@@ -58,14 +58,6 @@ function mapChallanToRows(rec: any): RowData[] {
 }
 
 const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }) => {
-  const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<RowData>({
-    qty: "",
-    description: "",
-    indno: "",
-    gpno: "",
-  });
-
   // GatePass search state
   const [gpQuery, setGpQuery] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -76,6 +68,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
   const [poNo, setPoNo] = useState<string>(""); // controlled Purchase Order input
   const [generating, setGenerating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // NEW: manual GatePass and Company Name
+  const [manualGp, setManualGp] = useState<string>("");
+  const [companyName, setCompanyName] = useState<string>("Kassim Textile Mills Limited");
   // ----- END NEW STATE -----
 
   useEffect(() => {
@@ -117,30 +112,23 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
     const mapped = mapChallanToRows(item).map((r) => ({ ...r, gpno: String(gp) }));
     setRows(mapped);
     setGpNo(String(gp));
+
+    // OPTIONAL: pre-fill manual GP with selected GP
+    setManualGp(String(gp));
   };
 
-  const handleEdit = (idx: number) => {
-    setEditIdx(idx);
-    setEditValues(rows[idx]);
-  };
-
-  const handleInputChange = (field: keyof RowData, value: string) => {
-    setEditValues((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSave = () => {
-    if (editIdx !== null) {
-      const updatedRows = [...rows];
-      updatedRows[editIdx] = editValues;
-      setRows(updatedRows);
-      setEditIdx(null);
-    }
+  // NEW: direct row update (auto-save)
+  const handleRowChange = (idx: number, field: keyof RowData, value: string) => {
+    setRows((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: value };
+      return copy;
+    });
   };
 
   const handleDelete = (idx: number) => {
     const updatedRows = rows.filter((_, i) => i !== idx);
     setRows(updatedRows);
-    setEditIdx(null);
     onConfirm();
   };
 
@@ -153,8 +141,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
       const payload = {
         Date: new Date().toISOString().split("T")[0],
         PO: poNo || "00000",
-        GP: gpQuery || rows?.[0]?.gpno || "",
-        Industry: "", // adjust if you add an Industry input
+        // use manual gate pass if provided, otherwise fall back
+        GP: manualGp || gpQuery || rows?.[0]?.gpno || "",
+        Industry: companyName || "Kassim Textile Mills Limited",
         Description: rows.map((r) => ({
           qty: r.qty,
           description: r.description,
@@ -174,13 +163,25 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
       }
 
       const body = await res.json();
-      const returnedChallan = body?.challan ?? (Array.isArray(body?.data) ? (body.data[0]?.id ? String(body.data[0].id).padStart(5,'0') : null) : (body?.data?.id ? String(body.data.id).padStart(5,'0') : null));
+      // challan string now always comes from API as `body.challan`
+      const returnedChallan =
+        body?.challan ??
+        (Array.isArray(body?.data)
+          ? body.data[0]?.id
+            ? String(body.data[0].id).padStart(5, "0")
+            : null
+          : body?.data?.id
+          ? String(body.data.id).padStart(5, "0")
+          : null);
+
       try {
         localStorage.setItem("latestPO", String(payload.PO ?? ""));
         if (returnedChallan) {
           localStorage.setItem("latestChallan", returnedChallan);
           try {
-            window.dispatchEvent(new CustomEvent("latestChallanUpdated", { detail: { challan: returnedChallan } }));
+            window.dispatchEvent(
+              new CustomEvent("latestChallanUpdated", { detail: { challan: returnedChallan } })
+            );
           } catch (e) {}
         }
       } catch (e) {}
@@ -198,9 +199,11 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
       <Nav href1="/Challan" name1="Generate" href2="/Challan/inquery" name2="Inquery" />
 
       <div className="w-full mt-8">
-        <div className="flex flex-wrap gap-8 items-center">
+        {/* ROW 1: Search GP + Purchase Number */}
+        <div className="flex flex-wrap gap-8 items-start mb-4">
+          {/* SEARCHABLE GATEPASS (for lookup only) */}
           <div className="relative">
-            <h2 className="font-semibold text-xs text-white">Enter GatePass Number</h2>
+            <h2 className="font-semibold text-xs text-white">Search GatePass Number</h2>
             <input
               type="text"
               value={gpQuery}
@@ -229,7 +232,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
                             Document No: {String(sug?.document_no ?? "-")}
                           </div>
                           {sug?.document_date && (
-                            <div className="text-[11px] text-gray-600">Date: {String(sug.document_date)}</div>
+                            <div className="text-[11px] text-gray-600">
+                              Date: {String(sug.document_date)}
+                            </div>
                           )}
                         </button>
                       </li>
@@ -239,6 +244,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
               </div>
             )}
           </div>
+
+          {/* PURCHASE NUMBER */}
           <div>
             <h2 className="font-semibold text-xs text-white">Enter Purchase Number</h2>
             <input
@@ -247,6 +254,33 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
               onChange={(e) => setPoNo(e.target.value)}
               className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="P.O. No"
+            />
+          </div>
+        </div>
+
+        {/* ROW 2: Manual GP + Company Name on same line */}
+        <div className="flex flex-wrap gap-8 items-start">
+          {/* MANUAL GATEPASS INPUT USED FOR GENERATE */}
+          <div>
+            <h2 className="font-semibold text-xs text-white">Enter GatePass Number (Manual)</h2>
+            <input
+              type="text"
+              value={manualGp}
+              onChange={(e) => setManualGp(e.target.value)}
+              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
+              placeholder="GP No"
+            />
+          </div>
+
+          {/* COMPANY NAME */}
+          <div className="min-w-[200px]">
+            <h2 className="font-semibold text-xs text-white">Enter Company Name</h2>
+            <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              className="my-2 w-52 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
+              placeholder="Company Name"
             />
           </div>
         </div>
@@ -269,6 +303,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
             </tbody>
           </table>
 
+          {/* AUTO-SAVE TABLE */}
           <table className="generate w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
             <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>
@@ -281,39 +316,23 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
               {rows.map((row, idx) => (
                 <tr key={idx} className="bg-[#f2d3be] text-black border-b-2 border-black h-6">
                   <td className="px-2.5 py-1 border-r-2 border-black text-center">
-                    {editIdx === idx ? (
-                      <input
-                        type="text"
-                        value={editValues.qty}
-                        onChange={(e) => handleInputChange("qty", e.target.value)}
-                        className="w-full text-xs outline-none bg-transparent text-center"
-                      />
-                    ) : (
-                      row.qty
-                    )}
+                    <input
+                      type="text"
+                      value={row.qty}
+                      onChange={(e) => handleRowChange(idx, "qty", e.target.value)}
+                      className="w-full text-xs outline-none bg-transparent text-center"
+                    />
                   </td>
                   <td className="px-2.5 py-1 border-r-2 border-black">
-                    {editIdx === idx ? (
-                      <input
-                        type="text"
-                        value={editValues.description}
-                        onChange={(e) => handleInputChange("description", e.target.value)}
-                        className="w-full text-xs outline-none bg-transparent"
-                      />
-                    ) : (
-                      row.description
-                    )}
+                    <input
+                      type="text"
+                      value={row.description}
+                      onChange={(e) => handleRowChange(idx, "description", e.target.value)}
+                      className="w-full text-xs outline-none bg-transparent"
+                    />
                   </td>
                   <td className="px-2 py-1 flex justify-center gap-2">
-                    {editIdx === idx ? (
-                      <button onClick={handleSave}>
-                        <img src="/save.png" alt="Save" className="w-5 h-5" />
-                      </button>
-                    ) : (
-                      <button onClick={() => handleEdit(idx)}>
-                        <img src="/edit.png" alt="Edit" className="w-5 h-5" />
-                      </button>
-                    )}
+                    {/* Only delete now, since edit/save is automatic */}
                     <button onClick={() => handleDelete(idx)}>
                       <img src="/delete.png" alt="Delete" className="w-5 h-5" />
                     </button>

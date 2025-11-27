@@ -43,70 +43,63 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { Date, PO, GP, Industry, Description } = req.body
 
-      // Compute base next number: scan recent rows and find max numeric challanno
-      let baseNext = 1
+      // NEW: read the largest challanno from DB and add 1
+      let nextChallanNo = 1
       try {
-        const { data: recent } = await supabase
+        const { data: maxRow, error: maxErr } = await supabase
           .from('DeliveryChallan')
-          .select('challanno,id')
-          .order('id', { ascending: false })
-          .limit(100)
+          .select('challanno')
+          .order('challanno', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-        if (Array.isArray(recent) && recent.length > 0) {
-          let maxSeen = 0
-          for (const r of recent) {
-            const num = Number(String(r?.challanno ?? '').replace(/\D/g, ''))
-            if (!Number.isNaN(num)) maxSeen = Math.max(maxSeen, num)
+        if (maxErr) {
+          console.error('Error reading max challanno:', maxErr)
+        } else if (maxRow && maxRow.challanno != null) {
+          const currentMax = Number(String(maxRow.challanno).replace(/\D/g, ''))
+          if (!Number.isNaN(currentMax)) {
+            nextChallanNo = currentMax + 1
           }
-          baseNext = maxSeen + 1
         }
       } catch (e) {
-        baseNext = 1
+        console.error('Exception while reading max challanno:', e)
+        // fall back to 1
+        nextChallanNo = 1
       }
 
-      // Try to insert; if PK conflict on challanno, bump and retry a few times
-      const maxAttempts = 5
-      let attempt = 0
-      let lastErr = null
-      while (attempt < maxAttempts) {
-        const candidate = baseNext + attempt
-        const challanStr = String(candidate).padStart(5, '0')
+      const challanStr = String(nextChallanNo).padStart(5, '0')
 
-        const { data, error } = await supabase
-          .from('DeliveryChallan')
-          .insert(
-            [
-              {
-                Date,
-                PO,
-                GP,
-                Industry,
-                Description,
-                challanno: candidate
-              }
-            ],
-            { returning: 'representation' }
-          )
-          .select('*')
-          .single()
+      // Insert single row with computed challanno
+      const { data, error } = await supabase
+        .from('DeliveryChallan')
+        .insert(
+          [
+            {
+              Date,
+              PO,
+              GP,
+              Industry,
+              Description,
+              challanno: nextChallanNo,
+            },
+          ],
+          { returning: 'representation' }
+        )
+        .select('*')
+        .single()
 
-        if (!error) {
-          return res.status(201).json({ data, challan: challanStr })
+      if (error) {
+        console.error('Error inserting DeliveryChallan:', error)
+        // if DB has a unique constraint and this clashes, surface a clear message
+        if (error.code === '23505' || /duplicate key value/i.test(String(error.message))) {
+          return res
+            .status(409)
+            .json({ error: 'Could not allocate a unique challan number. Please retry.' })
         }
-
-        // Unique violation (duplicate challanno) — try next number
-        if (error?.code === '23505' || /duplicate key value/i.test(String(error?.message))) {
-          lastErr = error
-          attempt += 1
-          continue
-        }
-
-        // Other errors: bail out
         return res.status(500).json({ error: error.message })
       }
 
-      // If we got here, we ran out of attempts due to contention
-      return res.status(409).json({ error: 'Could not allocate a unique challan number. Please retry.' })
+      return res.status(201).json({ data, challan: challanStr })
     }
 
     return res.status(405).json({ error: 'Method not allowed' })
