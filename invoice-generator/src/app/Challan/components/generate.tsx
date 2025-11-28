@@ -71,6 +71,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
   // NEW: manual GatePass and Company Name
   const [manualGp, setManualGp] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("Kassim Textile Mills Limited");
+  // NEW: sample returned flag (shared with preview via localStorage)
+  const [sampleReturned, setSampleReturned] = useState<boolean>(false);
   // ----- END NEW STATE -----
 
   useEffect(() => {
@@ -102,6 +104,14 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
       clearTimeout(id);
     };
   }, [gpQuery]);
+
+  // Load initial sampleReturned from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("sampleReturned");
+      if (stored === "true") setSampleReturned(true);
+    } catch {}
+  }, []);
 
   const handleSelectSuggestion = (item: any) => {
     const gp = item?.document_no ?? item?.GP ?? item?.gp ?? "";
@@ -184,6 +194,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
             );
           } catch (e) {}
         }
+        // store sampleReturned so preview can use it
+        localStorage.setItem("sampleReturned", sampleReturned ? "true" : "false");
       } catch (e) {}
       onConfirm();
     } catch (err: any) {
@@ -307,9 +319,11 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           <table className="generate w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
             <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>
-                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[20%]">Qty</th>
-                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[65%]">Description</th>
-                <th className="px-2.5 py-1 border-b-2 border-black text-center">Actions</th>
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[15%]">Qty</th>
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[55%]">Description</th>
+                {/* NEW: Indent No column before Actions */}
+                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[15%]">Indent No</th>
+                <th className="px-2.5 py-1 border-b-2 border-black text-center w-[15%]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -331,8 +345,16 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
                       className="w-full text-xs outline-none bg-transparent"
                     />
                   </td>
+                  {/* NEW: editable Indent No cell */}
+                  <td className="px-2.5 py-1 border-r-2 border-black text-center">
+                    <input
+                      type="text"
+                      value={row.indno}
+                      onChange={(e) => handleRowChange(idx, "indno", e.target.value)}
+                      className="w-full text-xs outline-none bg-transparent text-center"
+                    />
+                  </td>
                   <td className="px-2 py-1 flex justify-center gap-2">
-                    {/* Only delete now, since edit/save is automatic */}
                     <button onClick={() => handleDelete(idx)}>
                       <img src="/delete.png" alt="Delete" className="w-5 h-5" />
                     </button>
@@ -344,7 +366,40 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
         </div>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 flex flex-col gap-3">
+        {/* Custom orange checkbox */}
+        <label className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 transition cursor-pointer">
+          {/* visually hidden native checkbox */}
+          <input
+            type="checkbox"
+            checked={sampleReturned}
+            onChange={(e) => {
+              const val = e.target.checked;
+              setSampleReturned(val);
+              try {
+                localStorage.setItem("sampleReturned", val ? "true" : "false");
+              } catch {}
+            }}
+            className="sr-only peer"
+          />
+          {/* custom box */}
+          <span className="flex h-4 w-4 items-center justify-center rounded-[3px] border border-[var(--accent)] bg-transparent peer-checked:bg-[var(--accent)] peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-0 transition-colors">
+            {/* check mark */}
+            <svg
+              className="h-3 w-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 8.5 6.5 12 13 4" />
+            </svg>
+          </span>
+          <span className="select-none">Sample have been returned</span>
+        </label>
+
         <button
           className="bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-60"
           onClick={handleGenerate}
