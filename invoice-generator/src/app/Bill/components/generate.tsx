@@ -11,6 +11,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const [companyName, setCompanyName] = useState<string>('');
+  const [billNumber, setBillNumber] = useState<string>('');
 
   const handleRowChange = (idx: number, field: keyof RowData, value: string) => {
     setRows(prev => {
@@ -45,7 +46,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   }, [challanQuery]);
 
   useEffect(()=>{
-    try{ const stored = localStorage.getItem('invoiceCompanyName'); if(stored) setCompanyName(stored);}catch{}
+    try{ const stored = localStorage.getItem('invoiceCompanyName'); if(stored) setCompanyName(stored); const storedBill = localStorage.getItem('latestBill'); if(storedBill) setBillNumber(storedBill);}catch{}
   },[]);
 
   const handleSelectChallan = (item: any) => {
@@ -68,6 +69,14 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
           <input
             value={companyName}
             onChange={e=>{ setCompanyName(e.target.value); try{ localStorage.setItem('invoiceCompanyName', e.target.value);}catch{} }}
+            className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+          />
+        </div>
+        <div className='mb-4'>
+          <h2 className='font-semibold text-xs text-white'>Bill No</h2>
+          <input
+            value={billNumber}
+            onChange={e=>{ setBillNumber(e.target.value); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
             className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
           />
         </div>
