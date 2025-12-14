@@ -297,25 +297,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           </div>
         </div>
 
-        <div className="flex flex-col items-center mt-8 space-y-8">
-          <table className="display w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
-            <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
-              <tr>
-                <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[20%]">Qty</th>
-                <th className="px-2.5 py-1 border-b-2 border-black w-[80%]">Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, idx) => (
-                <tr key={idx} className="bg-[#f2d3be] text-black border-b-2 border-black h-6">
-                  <td className="px-2.5 py-1 border-r-2 border-black text-center">{row.qty}</td>
-                  <td className="px-2.5 py-1">{row.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* AUTO-SAVE TABLE */}
+        <div className="flex flex-col items-center mt-8">
+          {/* MAIN EDITABLE TABLE */}
           <table className="generate w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs">
             <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>

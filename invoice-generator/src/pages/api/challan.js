@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { challan, limit } = req.query
+      const { challan, limit, exact } = req.query
 
       // If challan query provided, perform a prefix search on challanno
       if (challan && typeof challan === 'string') {
@@ -17,16 +17,34 @@ export default async function handler(req, res) {
         const parsed = Number(challan.replace(/\D/g, ''))
 
         if (!Number.isNaN(parsed)) {
+          // If exact flag provided, return only exact challanno matches
+          if (String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true') {
+            const { data, error } = await supabase
+              .from('DeliveryChallan')
+              .select('*')
+              .eq('challanno', parsed)
+              .order('created_at', { ascending: false })
+              .limit(lim)
+
+            if (error) return res.status(500).json({ error: error.message })
+            return res.status(200).json(data)
+          }
+
+          // Legacy: best-effort prefix search by casting to text and using like
+          // Note: PostgREST allows text pattern matching on text columns; for numeric
+          // columns, we use a computed text via RPC style filter. As a simpler fallback,
+          // we narrow by a reasonable numeric window then filter in memory.
           const { data, error } = await supabase
             .from('DeliveryChallan')
             .select('*')
-            .gte('challanno', parsed)
-            .lt('challanno', parsed * 10)
             .order('created_at', { ascending: false })
-            .limit(lim)
+            .limit(500)
 
           if (error) return res.status(500).json({ error: error.message })
-          return res.status(200).json(data)
+
+          const prefix = String(parsed)
+          const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
+          return res.status(200).json(filtered)
         }
       }
 

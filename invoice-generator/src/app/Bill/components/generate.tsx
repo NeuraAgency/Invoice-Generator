@@ -6,17 +6,20 @@ interface RowData { qty: string; description: string; amount: string; }
 interface GenerateProps { rows: RowData[]; setRows: React.Dispatch<React.SetStateAction<RowData[]>>; onConfirm: () => void; }
 
 const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
-  const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<RowData>({ qty: '', description: '', amount: '' });
   const [challanQuery, setChallanQuery] = useState<string>('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const [companyName, setCompanyName] = useState<string>('');
 
-  const handleEdit = (idx: number) => { setEditIdx(idx); setEditValues(rows[idx]); };
-  const handleInputChange = (field: keyof RowData, value: string) => setEditValues(prev => ({ ...prev, [field]: value }));
-  const handleSave = () => { if (editIdx !== null) { const updated = [...rows]; updated[editIdx] = editValues; setRows(updated); setEditIdx(null); onConfirm(); } };
-  const handleDelete = (idx: number) => { setRows(rows.filter((_, i) => i !== idx)); setEditIdx(null); onConfirm(); };
+  const handleRowChange = (idx: number, field: keyof RowData, value: string) => {
+    setRows(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+  };
+  const handleDelete = (idx: number) => { setRows(rows.filter((_, i) => i !== idx)); onConfirm(); };
 
   const handleGenerate = async () => {
     try {
@@ -34,12 +37,16 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     if (!challanQuery) { setSuggestions([]); return; }
     const controller = new AbortController();
     const id = setTimeout(async () => {
-      try { setLoading(true); const res = await fetch(`/api/challan?challan=${encodeURIComponent(challanQuery)}&limit=10`, { signal: controller.signal }); if (!res.ok) throw new Error('Failed'); const data = await res.json(); setSuggestions(Array.isArray(data) ? data : []); setShowSuggestions(true); }
+      try { setLoading(true); const res = await fetch(`/api/challan?challan=${encodeURIComponent(challanQuery)}&limit=10&exact=1`, { signal: controller.signal }); if (!res.ok) throw new Error('Failed'); const data = await res.json(); setSuggestions(Array.isArray(data) ? data : []); setShowSuggestions(true); }
       catch (e:any) { if (e?.name !== 'AbortError') setSuggestions([]); }
       finally { setLoading(false); }
     }, 250);
     return () => { controller.abort(); clearTimeout(id); };
   }, [challanQuery]);
+
+  useEffect(()=>{
+    try{ const stored = localStorage.getItem('invoiceCompanyName'); if(stored) setCompanyName(stored);}catch{}
+  },[]);
 
   const handleSelectChallan = (item: any) => {
     const challanNo = item?.challanno ?? item?.challan ?? '';
@@ -56,6 +63,14 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     <div className='flex flex-col items-start px-6 py-4'>
       <Nav href1='/Bill' name1='Generate' href2='/Bill/inquery' name2='Inquery' />
       <div className='w-full mt-8'>
+        <div className='mb-4'>
+          <h2 className='font-semibold text-xs text-white'>Company Name</h2>
+          <input
+            value={companyName}
+            onChange={e=>{ setCompanyName(e.target.value); try{ localStorage.setItem('invoiceCompanyName', e.target.value);}catch{} }}
+            className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+          />
+        </div>
         <div className='flex flex-wrap gap-8 items-center'>
           <div className='relative'>
             <h2 className='font-semibold text-xs text-white'>Enter Challan Number</h2>
@@ -92,20 +107,15 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
               {rows.map((row,idx)=>(
                 <tr key={idx} className='bg-[#e9c6b1] text-black border-b-2 border-black h-6'>
                   <td className='px-2.5 py-1 border-r-2 border-black'>
-                    {editIdx===idx ? <input type='text' value={editValues.qty} onChange={e=>handleInputChange('qty', e.target.value)} className='w-full text-xs outline-none bg-transparent' /> : row.qty}
+                    <input type='text' value={row.qty} onChange={e=>handleRowChange(idx, 'qty', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
                   </td>
                   <td className='px-2.5 py-1 border-r-2 border-black'>
-                    {editIdx===idx ? <input type='text' value={editValues.description} onChange={e=>handleInputChange('description', e.target.value)} className='w-full text-xs outline-none bg-transparent' /> : row.description}
+                    <input type='text' value={row.description} onChange={e=>handleRowChange(idx, 'description', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
                   </td>
                   <td className='px-2.5 py-1 border-r-2 border-black'>
-                    {editIdx===idx ? <input type='text' value={editValues.amount} onChange={e=>handleInputChange('amount', e.target.value)} className='w-full text-xs outline-none bg-transparent' /> : row.amount}
+                    <input type='text' value={row.amount} onChange={e=>handleRowChange(idx, 'amount', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
                   </td>
                   <td className='px-2 py-1 flex justify-center gap-2'>
-                    {editIdx===idx ? (
-                      <button onClick={handleSave}><img src='/save.png' alt='Save' className='w-6 h-6 bg-center' /></button>
-                    ) : (
-                      <button onClick={()=>handleEdit(idx)}><img src='/edit.png' alt='Edit' className='w-6 h-6 bg-center' /></button>
-                    )}
                     <button onClick={()=>handleDelete(idx)}><img src='/delete.png' alt='Delete' className='w-6 h-6' /></button>
                   </td>
                 </tr>
@@ -115,7 +125,10 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
         </div>
       </div>
       <div className='mt-6'>
-        <button className='bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={handleGenerate}>Generate</button>
+        <div className='flex gap-3'>
+          <button className='bg-[var(--accent)] py-2 px-4 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={onConfirm}>Update Preview</button>
+          <button className='bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={handleGenerate}>Generate</button>
+        </div>
       </div>
     </div>
   );
