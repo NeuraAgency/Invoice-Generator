@@ -12,7 +12,7 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
   const [invoiceChallan, setInvoiceChallan] = useState<string>("00000");
   const [invoiceGP, setInvoiceGP] = useState<string>("");
   const date = new Date().toLocaleDateString();
-  const PO = "00001";
+  const PO = "00000";
   const challan = invoiceChallan;
   const GP = invoiceGP || "";
   useEffect(() => {
