@@ -72,18 +72,29 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
             className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
           />
         </div>
-        <div className='mb-4'>
-          <h2 className='font-semibold text-xs text-white'>Bill No</h2>
-          <input
-            value={billNumber}
-            onChange={e=>{ setBillNumber(e.target.value); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
-            className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
-          />
-        </div>
-        <div className='flex flex-wrap gap-8 items-center'>
-          <div className='relative'>
-            <h2 className='font-semibold text-xs text-white'>Enter Challan Number</h2>
-            <input type='text' value={challanQuery} onChange={e=>setChallanQuery(e.target.value)} onFocus={()=>challanQuery && setShowSuggestions(true)} className='my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50' placeholder='Search Challan' />
+        <div className='flex gap-8 items-start mb-4'>
+          <div className='w-64'>
+            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
+              <h2 className='font-semibold text-xs text-white'>Bill No</h2>
+              <input
+                value={billNumber}
+                onChange={e=>{ setBillNumber(e.target.value); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
+                className='my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+              />
+            </div>
+          </div>
+          <div className='relative w-64'>
+            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
+              <h2 className='font-semibold text-xs text-white'>Enter Challan Number</h2>
+              <input
+                type='text'
+                value={challanQuery}
+                onChange={e=>setChallanQuery(e.target.value)}
+                onFocus={()=>challanQuery && setShowSuggestions(true)}
+                className='my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50'
+                placeholder='Search Challan'
+              />
+            </div>
             {showSuggestions && (
               <div className='absolute z-10 mt-1 w-64 max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200'>
                 {loading ? <div className='px-3 py-2 text-xs text-gray-500'>Searching…</div> : suggestions.length === 0 ? <div className='px-3 py-2 text-xs text-gray-500'>No results</div> : (
@@ -125,7 +136,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                     <input type='text' value={row.amount} onChange={e=>handleRowChange(idx, 'amount', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
                   </td>
                   <td className='px-2 py-1 flex justify-center gap-2'>
-                    <button onClick={()=>handleDelete(idx)}><img src='/delete.png' alt='Delete' className='w-6 h-6' /></button>
+                    <button onClick={()=>handleDelete(idx)}>
+                      <img src='/delete.png' alt='Delete' className='w-5 h-5' />
+                    </button>
                   </td>
                 </tr>
               ))}

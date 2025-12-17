@@ -223,7 +223,7 @@ const Page = () => {
           .map(doc => (
             <div
               key={doc.id}
-              className="w-11/12 flex items-center gap-3 bg-black border border-orange-500 rounded-lg px-4 py-3 text-white hover:border-orange-400 transition-all"
+              className="w-11/12 flex flex-col gap-2 bg-white/5 border-[1px] border-white/10 rounded-lg px-4 py-3 text-white hover:shadow-lg transition-all"
             >
               {/* Preview (image if possible) */}
               <div className="flex-shrink-0">
@@ -240,27 +240,26 @@ const Page = () => {
                   </div>
                 )}
               </div>
-
               {/* Meta (Gatepass no, date, and URL link) */}
-              <div className="flex min-w-0 flex-col gap-1">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="truncate font-medium">
-                    {doc.document_no || '—'}
-                  </span>
-                  <span className="text-xs text-[var(--accent)] whitespace-nowrap">
-                    {doc.document_date || '—'}
-                  </span>
+              <div className="flex flex-1 flex-col min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate font-medium">{doc.document_no || '—'}</div>
+                    {doc.URL && (
+                      <a href={doc.URL} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline break-all">
+                        {doc.URL}
+                      </a>
+                    )}
+                  </div>
+                  <div className="ml-2">
+                    <div className="text-xs text-[var(--accent)] whitespace-nowrap">{doc.document_date || '—'}</div>
+                  </div>
                 </div>
-                {doc.URL && (
-                  <a
-                    href={doc.URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-400 hover:underline break-all"
-                  >
-                    {doc.URL}
-                  </a>
-                )}
+
+                <div className="mt-2 flex gap-2">
+                  <div className="bg-white/5 border-[1px] border-white/10 rounded-md px-3 py-1 text-xs text-white">GP: {doc.document_no || '—'}</div>
+                  <div className="bg-white/5 border-[1px] border-white/10 rounded-md px-3 py-1 text-xs text-white">Date: {doc.document_date || '—'}</div>
+                </div>
               </div>
             </div>
           ))}

@@ -212,20 +212,22 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
       <div className="w-full mt-8">
         {/* ROW 1: Search GP + Purchase Number */}
-        <div className="flex flex-wrap gap-8 items-start mb-4">
+        <div className="flex gap-8 items-start mb-4">
           {/* SEARCHABLE GATEPASS (for lookup only) */}
-          <div className="relative">
-            <h2 className="font-semibold text-xs text-white">Search GatePass Number</h2>
-            <input
-              type="text"
-              value={gpQuery}
-              onChange={(e) => setGpQuery(e.target.value)}
-              onFocus={() => gpQuery && setShowSuggestions(true)}
-              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50"
-              placeholder="Search GP"
-            />
+          <div className="relative w-64">
+            <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
+              <h2 className="font-semibold text-xs text-white">Search GatePass Number</h2>
+              <input
+                type="text"
+                value={gpQuery}
+                onChange={(e) => setGpQuery(e.target.value)}
+                onFocus={() => gpQuery && setShowSuggestions(true)}
+                className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/50"
+                placeholder="Search GP"
+              />
+            </div>
             {showSuggestions && (
-              <div className="absolute z-10 mt-1 w-64 max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200">
+              <div className="absolute left-0 z-10 mt-1 w-64 max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200">
                 {loading ? (
                   <div className="px-3 py-2 text-xs text-gray-500">Searching…</div>
                 ) : suggestions.length === 0 ? (
@@ -258,40 +260,42 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           </div>
 
           {/* PURCHASE NUMBER */}
-          <div>
+          <div className="relative w-64">
+            <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
             <h2 className="font-semibold text-xs text-white">Enter Purchase Number</h2>
             <input
               type="text"
               value={poNo}
               onChange={(e) => setPoNo(e.target.value)}
-              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
+              className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="P.O. No"
             />
+            </div>
           </div>
         </div>
 
         {/* ROW 2: Manual GP + Company Name on same line */}
         <div className="flex flex-wrap gap-8 items-start">
           {/* MANUAL GATEPASS INPUT USED FOR GENERATE */}
-          <div>
+          <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
             <h2 className="font-semibold text-xs text-white">Enter GatePass Number (Manual)</h2>
             <input
               type="text"
               value={manualGp}
               onChange={(e) => setManualGp(e.target.value)}
-              className="my-2 w-36 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
+              className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="GP No"
             />
           </div>
 
           {/* COMPANY NAME */}
-          <div className="min-w-[200px]">
+          <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
             <h2 className="font-semibold text-xs text-white">Enter Company Name</h2>
             <input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              className="my-2 w-52 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
+              className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="Company Name"
             />
           </div>
