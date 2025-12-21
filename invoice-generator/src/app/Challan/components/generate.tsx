@@ -282,7 +282,12 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
             <input
               type="text"
               value={manualGp}
-              onChange={(e) => setManualGp(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setManualGp(val);
+                setGpNo(val); // keep preview in sync with manual GP entry
+                setRows((prev) => prev.map((r) => ({ ...r, gpno: val })));
+              }}
               className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
               placeholder="GP No"
             />
