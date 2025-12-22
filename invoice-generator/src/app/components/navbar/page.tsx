@@ -72,28 +72,28 @@ const Navbar = () => {
       <div className="flex flex-col justify-center mt-6 font-semibold text-[11px] lg:text-[12px] text-white pl-0 gap-1.5 w-full">
         <Link href='/Datacenter' className={`nav-link roundborder2 ${makeActive('/Datacenter') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" fill="currentColor"/><rect x="14" y="3" width="7" height="7" rx="1" fill="currentColor"/><rect x="3" y="14" width="7" height="7" rx="1" fill="currentColor"/><rect x="14" y="14" width="7" height="7" rx="1" fill="currentColor"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v4c0 1.38 3.134 2.5 7 2.5s7-1.12 7-2.5V5"/><ellipse cx="12" cy="13.5" rx="7" ry="2.5"/></svg>
           </span>
           <span className="nav-label">Purchase Order and Gate Pass</span>
         </Link>
 
         <Link href='/Challan' className={`nav-link roundborder2 ${makeActive('/Challan') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3a1 1 0 0 1-1 1h-2"/><circle cx="7.5" cy="19.5" r="1.5"/><circle cx="18.5" cy="19.5" r="1.5"/></svg>
           </span>
           <span className="nav-label">Generate Delivery Challan</span>
         </Link>
 
         <Link href='/Bill' className={`nav-link roundborder2 ${makeActive('/Bill') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v6H4z" fill="currentColor"/><path d="M4 14h16v6H4z" fill="currentColor"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="2" width="14" height="20" rx="2"/><path d="M7 7h6M7 11h6M7 15h6"/></svg>
           </span>
           <span className="nav-label">Generate Invoices</span>
         </Link>
 
         <Link href='/Quotation' className={`nav-link roundborder2 ${makeActive('/Quotation') ? 'active' : ''}`}>
           <span className="nav-icon" aria-hidden>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16v10H4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 7a4 4 0 11-4 4"/><path d="M20 7a4 4 0 11-4 4"/><path d="M2 21h20"/></svg>
           </span>
           <span className="nav-label">Generate Quotation</span>
         </Link>
