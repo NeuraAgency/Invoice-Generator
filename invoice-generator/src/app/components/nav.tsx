@@ -10,7 +10,7 @@ interface NavProps {
 
 const Nav: React.FC<NavProps> = ({ href1, name1, href2, name2 }) => {
   return (
-    <div className="bg-[var(--accent)] inline-flex rounded-xl font-semibold text-white px-4 py-2 gap-3 text-sm">
+    <div className="bg-[var(--accent)] inline-flex flex-wrap rounded-xl font-semibold text-white px-4 py-2 gap-3 text-sm">
       <Link href={href1}>{name1}</Link>
       <Link href={href2}>{name2}</Link>
     </div>

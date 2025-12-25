@@ -61,30 +61,38 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   };
 
   return (
-    <div className='flex flex-col items-start px-6 py-4'>
+    <div className='flex flex-col items-start px-4 sm:px-6 py-4 w-full'>
       <Nav href1='/Bill' name1='Generate' href2='/Bill/inquery' name2='Inquery' />
-      <div className='w-full mt-8'>
-        <div className='mb-4'>
+      <div className='w-full mt-8 space-y-4 sm:space-y-6'>
+        {/* Company Name - Full width on all sizes */}
+        <div className='w-full'>
           <h2 className='font-semibold text-xs text-white'>Company Name</h2>
           <input
             value={companyName}
             onChange={e=>{ setCompanyName(e.target.value); try{ localStorage.setItem('invoiceCompanyName', e.target.value);}catch{} }}
-            className='mt-1 w-full max-w-sm text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+            className='mt-1 w-full sm:max-w-md text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+            placeholder="Enter Company Name"
           />
         </div>
-        <div className='flex gap-8 items-start mb-4'>
-          <div className='w-64'>
-            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
+
+        {/* Input Grid: Bill No and Challan Number */}
+        <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-8 w-full'>
+          {/* BILL NUMBER */}
+          <div className='w-full'>
+            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-full h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
               <h2 className='font-semibold text-xs text-white'>Bill No</h2>
               <input
                 value={billNumber}
                 onChange={e=>{ setBillNumber(e.target.value); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
                 className='my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
+                placeholder="Enter Bill No"
               />
             </div>
           </div>
-          <div className='relative w-64'>
-            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-64 h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
+
+          {/* CHALLAN NUMBER SEARCH */}
+          <div className='relative w-full'>
+            <div className='bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-full h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]'>
               <h2 className='font-semibold text-xs text-white'>Enter Challan Number</h2>
               <input
                 type='text'
@@ -96,8 +104,12 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
               />
             </div>
             {showSuggestions && (
-              <div className='absolute z-10 mt-1 w-64 max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200'>
-                {loading ? <div className='px-3 py-2 text-xs text-gray-500'>Searching…</div> : suggestions.length === 0 ? <div className='px-3 py-2 text-xs text-gray-500'>No results</div> : (
+              <div className='absolute left-0 z-10 mt-1 w-full max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200'>
+                {loading ? (
+                  <div className='px-3 py-2 text-xs text-gray-500'>Searching…</div>
+                ) : suggestions.length === 0 ? (
+                  <div className='px-3 py-2 text-xs text-gray-500'>No results</div>
+                ) : (
                   <ul className='divide-y divide-gray-200'>
                     {suggestions.map((s:any,i:number)=>(
                       <li key={i}>
@@ -113,21 +125,23 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
             )}
           </div>
         </div>
-        <div className='flex flex-col items-center mt-8'>
-          <table className='w-full max-w-[720px] min-w-[520px] border border-black text-left rounded-xl overflow-hidden text-xs'>
+
+        <div className='w-full overflow-x-auto mt-8 pb-4'>
+          {/* MAIN EDITABLE TABLE */}
+          <table className='generate w-full min-w-[600px] border border-black text-left rounded-xl overflow-hidden text-xs'>
             <thead className='bg-[var(--accent)] text-white text-[11px] uppercase'>
               <tr>
                 <th className='px-2.5 py-1 border-b-2 border-r-2 border-black w-[15%]'>Qty</th>
-                <th className='px-2.5 py-1 border-b-2 border-r-2 border-black w-[65%]'>Description</th>
+                <th className='px-2.5 py-1 border-b-2 border-r-2 border-black w-[55%]'>Description</th>
                 <th className='px-2.5 py-1 border-b-2 border-r-2 border-black w-[20%]'>Amount</th>
-                <th className='px-2.5 py-1 border-b-2 border-black text-center'>Actions</th>
+                <th className='px-2.5 py-1 border-b-2 border-black text-center w-[10%]'>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row,idx)=>(
                 <tr key={idx} className='bg-[#e9c6b1] text-black border-b-2 border-black h-6'>
                   <td className='px-2.5 py-1 border-r-2 border-black'>
-                    <input type='text' value={row.qty} onChange={e=>handleRowChange(idx, 'qty', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
+                    <input type='text' value={row.qty} onChange={e=>handleRowChange(idx, 'qty', e.target.value)} className='w-full text-xs outline-none bg-transparent text-center' />
                   </td>
                   <td className='px-2.5 py-1 border-r-2 border-black'>
                     <input type='text' value={row.description} onChange={e=>handleRowChange(idx, 'description', e.target.value)} className='w-full text-xs outline-none bg-transparent' />
@@ -146,10 +160,10 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
           </table>
         </div>
       </div>
-      <div className='mt-6'>
-        <div className='flex gap-3'>
-          <button className='bg-[var(--accent)] py-2 px-4 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={onConfirm}>Update Preview</button>
-          <button className='bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={handleGenerate}>Generate</button>
+      <div className='mt-6 w-full'>
+        <div className='flex flex-wrap gap-3'>
+          <button className='flex-1 sm:flex-none bg-[var(--accent)] py-2 px-4 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={onConfirm}>Update Preview</button>
+          <button className='flex-1 sm:flex-none bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={handleGenerate}>Generate</button>
         </div>
       </div>
     </div>

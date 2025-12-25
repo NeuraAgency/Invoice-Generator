@@ -73,7 +73,7 @@ const timeline = [
 
 const page = () => {
   return (
-    <main className="flex-1 h-screen overflow-y-auto bg-black text-white">
+    <main className="flex-1 h-screen overflow-y-auto bg-black text-white pt-16 lg:pt-0">
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
         <div className="flex flex-col gap-3">
           <p className="text-sm uppercase tracking-[0.22em] text-slate-300 font-semibold">

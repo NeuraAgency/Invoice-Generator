@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`antialiased flex w-screen overflow-hidden`}>
+      <body className={`antialiased flex flex-col lg:flex-row w-screen h-screen overflow-hidden`}>
         <Navbar />
         {children}
       </body>

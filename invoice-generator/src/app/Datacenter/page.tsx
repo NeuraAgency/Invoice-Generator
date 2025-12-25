@@ -176,9 +176,9 @@ const Page = () => {
   // We display database docs instead of recently uploaded local files
 
   return (
-    <div className="w-screen h-screen bg-black flex items-center justify-center p-7">
-      <div className="flex w-full h-full max-w-[1600px] gap-6 p-8">
-        <div className="w-1/2 flex flex-col gap-2 max-h-full overflow-y-auto">
+    <div className="w-full min-h-screen bg-black flex items-start justify-center p-4 lg:p-7 pt-20 lg:pt-7">
+      <div className="flex flex-col lg:flex-row w-full h-full max-w-[1600px] gap-6 p-4 lg:p-8">
+        <div className="w-full lg:w-1/2 flex flex-col gap-2 max-h-full overflow-y-auto">
           <div className="flex items-end justify-between gap-3 mb-2">
                 <h2 className="text-[var(--accent)] font-semibold">Documents</h2>
             <div className="flex items-end gap-4">
@@ -264,7 +264,7 @@ const Page = () => {
             </div>
           ))}
         </div>
-        <div className="w-1/2 flex flex-col gap-6 items-stretch">
+        <div className="w-full lg:w-1/2 flex flex-col gap-6 items-stretch">
           <div className="flex-1 bg-[#e2c6b6] rounded-lg flex items-center justify-center overflow-hidden min-h-4/5">
             {selectedFile ? (
               selectedFile.type.startsWith('image/') ? (
