@@ -8,37 +8,69 @@ export default async function handler(req, res) {
       const { bill, challan, limit } = req.query
       const lim = Number(limit) || 50
 
-      let query = supabase.from('invoice').select('*')
+      // Try to include DeliveryChallan info so we can see the Industry/Company.
+      // If that join/select fails for any reason, fall back to a simple invoice select
+      // to avoid returning 500 to the client.
+      try {
+        let query = supabase.from('invoice').select('*, DeliveryChallan(Industry)')
 
-      // Numeric prefix filter for billno
-      if (bill && typeof bill === 'string') {
-        const parsedBill = Number(String(bill).replace(/\D/g, ''))
-        if (!Number.isNaN(parsedBill)) {
-          query = query.gte('billno', parsedBill).lt('billno', parsedBill * 10)
+        // Numeric prefix filter for billno
+        if (bill && typeof bill === 'string') {
+          const parsedBill = Number(String(bill).replace(/\D/g, ''))
+          if (!Number.isNaN(parsedBill)) {
+            query = query.gte('billno', parsedBill).lt('billno', parsedBill * 10)
+          }
+        }
+
+        // Numeric prefix filter for challanno
+        if (challan && typeof challan === 'string') {
+          const parsedCh = Number(String(challan).replace(/\D/g, ''))
+          if (!Number.isNaN(parsedCh)) {
+            query = query.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
+          }
+        }
+
+        const { data, error } = await query.order('billno', { ascending: false }).limit(lim)
+        if (error) throw error
+        return res.status(200).json(data)
+      } catch (e) {
+        console.error('/api/invoice primary query error:', e)
+        // fallback: try a simpler query without the join/relationship
+        try {
+          let fallback = supabase.from('invoice').select('*')
+          if (bill && typeof bill === 'string') {
+            const parsedBill = Number(String(bill).replace(/\D/g, ''))
+            if (!Number.isNaN(parsedBill)) {
+              fallback = fallback.gte('billno', parsedBill).lt('billno', parsedBill * 10)
+            }
+          }
+          if (challan && typeof challan === 'string') {
+            const parsedCh = Number(String(challan).replace(/\D/g, ''))
+            if (!Number.isNaN(parsedCh)) {
+              fallback = fallback.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
+            }
+          }
+          const { data: fd, error: ferr } = await fallback.order('billno', { ascending: false }).limit(lim)
+          if (ferr) {
+            console.error('/api/invoice fallback query error:', ferr)
+            return res.status(500).json({ error: String(ferr.message || ferr) })
+          }
+          return res.status(200).json(fd)
+        } catch (err) {
+          console.error('/api/invoice fallback exception:', err)
+          return res.status(500).json({ error: String(err?.message || err) })
         }
       }
-
-      // Numeric prefix filter for challanno
-      if (challan && typeof challan === 'string') {
-        const parsedCh = Number(String(challan).replace(/\D/g, ''))
-        if (!Number.isNaN(parsedCh)) {
-          query = query.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
-        }
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false }).limit(lim)
-      if (error) return res.status(500).json({ error: error.message })
-      return res.status(200).json(data)
     }
 
     if (req.method === 'POST') {
-      const { challanno, lines } = req.body
+      const { challanno, lines, billno: requestedBillNo } = req.body
 
       if (!challanno || !Array.isArray(lines)) {
         return res.status(400).json({ error: 'challanno and lines[] are required' })
       }
 
-      // Confirm challan exists (and can also fetch GP if needed later)
+      // Confirm challan exists 
       const { data: challanRow, error: challanError } = await supabase
         .from('DeliveryChallan')
         .select('challanno')
@@ -52,37 +84,65 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Challan not found' })
       }
 
-      // Compute next billno (same pattern as challan)
+      // If the client sent a specific bill number (like KTML-0001), we use it.
+      // Otherwise, we compute the next numeric one globally.
       let baseNext = 1
-      try {
-        const { data: recent } = await supabase
-          .from('invoice')
-          .select('billno,id')
-          .order('id', { ascending: false })
-          .limit(100)
+      if (requestedBillNo) {
+        // If it's a string like "KTML-0001", we'll try to use it directly.
+        // We'll trust the client's incrementing logic for now.
+      } else {
+        try {
+          const { data: recent } = await supabase
+            .from('invoice')
+            .select('billno')
+            .order('billno', { ascending: false })
+            .limit(50)
 
-        if (Array.isArray(recent) && recent.length > 0) {
-          let maxSeen = 0
-          for (const r of recent) {
-            const num = Number(String(r?.billno ?? '').replace(/\D/g, ''))
-            if (!Number.isNaN(num)) maxSeen = Math.max(maxSeen, num)
+          if (Array.isArray(recent) && recent.length > 0) {
+            let maxSeen = 0
+            for (const r of recent) {
+              const num = Number(String(r?.billno ?? '').replace(/\D/g, ''))
+              if (!Number.isNaN(num)) maxSeen = Math.max(maxSeen, num)
+            }
+            baseNext = maxSeen + 1
           }
-          baseNext = maxSeen + 1
+        } catch (e) {
+          baseNext = 1
         }
-      } catch (e) {
-        baseNext = 1
       }
 
       const maxAttempts = 5
       let attempt = 0
 
       while (attempt < maxAttempts) {
-        const candidate = baseNext + attempt
-        const billStr = String(candidate).padStart(5, '0')
+        let candidate = requestedBillNo
+        if (!candidate) {
+          candidate = baseNext + attempt
+        } else if (attempt > 0) {
+          // If we had a conflict with the requested one, we try to increment its numeric part
+          const parts = String(requestedBillNo).split('-')
+          if (parts.length === 2) {
+            const prefix = parts[0]
+            const num = Number(parts[1]) + attempt
+            candidate = `${prefix}-${String(num).padStart(4, '0')}`
+          } else {
+            const numPart = String(requestedBillNo).match(/\d+$/)
+            if (numPart) {
+              const prefix = String(requestedBillNo).slice(0, -numPart[0].length)
+              const num = Number(numPart[0]) + attempt
+              candidate = `${prefix}${String(num).padStart(numPart[0].length, '0')}`
+            } else {
+              candidate = `${requestedBillNo}_${attempt}`
+            }
+          }
+        }
+
+        const billStr = String(candidate)
 
         const descriptionPayload = lines.map((l) => ({
           qty: l.qty,
           description: l.description,
+          rate: l.rate ?? null,
           amount: l.amount,
         }))
 
@@ -105,8 +165,10 @@ export default async function handler(req, res) {
           return res.status(201).json({ data, bill: billStr })
         }
 
-        if (error?.code === '23505' || /duplicate key value/i.test(String(error?.message))) {
+        if (error?.code === '23505' || /duplicate key value|already exists/i.test(String(error?.message))) {
           attempt += 1
+          // If we are auto-generating a global numeric one, we also increment baseNext to be safe
+          if (!requestedBillNo) attempt = attempt // baseNext + attempt handles it
           continue
         }
 
@@ -117,30 +179,26 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
-      const { id, billno, status } = req.body || {}
+      const { billno, status } = req.body || {}
 
       if (typeof status !== 'boolean') {
         return res.status(400).json({ error: 'status (boolean) is required' })
       }
 
-      const supabase = getSupabaseAdminClient()
-
-      let query = supabase.from('invoice').update({ status }).select('*')
-      if (id != null) {
-        query = query.eq('id', id)
-      } else if (billno != null) {
-        query = query.eq('billno', billno)
-      } else {
-        return res.status(400).json({ error: 'id or billno is required' })
+      if (billno == null) {
+        return res.status(400).json({ error: 'billno is required' })
       }
 
-      const { data, error } = await query.single()
+      const supabase = getSupabaseAdminClient()
+
+      const { data, error } = await supabase.from('invoice').update({ status }).eq('billno', billno).select('*').single()
       if (error) return res.status(500).json({ error: error.message })
       return res.status(200).json(data)
     }
 
     return res.status(405).json({ error: 'Method not allowed' })
   } catch (e) {
+    console.error('/api/invoice outer exception:', e)
     return res.status(500).json({ error: e?.message || 'Unknown error' })
   }
 }

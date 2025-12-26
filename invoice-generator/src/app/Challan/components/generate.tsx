@@ -307,9 +307,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           </div>
         </div>
 
-        <div className="w-full overflow-x-auto mt-8 pb-4">
+        <div className="w-full overflow-x-auto mt-8 lg:overflow-x-visible">
           {/* MAIN EDITABLE TABLE */}
-          <table className="generate w-full min-w-[600px] border border-black text-left rounded-xl overflow-hidden text-xs">
+          <table className="generate w-full min-w-[500px] lg:min-w-0 border border-black text-left rounded-xl overflow-hidden text-xs">
             <thead className="bg-[var(--accent)] text-white text-[11px] uppercase">
               <tr>
                 <th className="px-2.5 py-1 border-b-2 border-r-2 border-black w-[15%]">Qty</th>
