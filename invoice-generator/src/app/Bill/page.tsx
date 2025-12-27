@@ -1,15 +1,15 @@
-'use client';
-import React, { useState } from 'react';
-import Generate from './components/generate';
+"use client";
+import React, { useState } from "react";
+import Generate, { RowData } from "./components/generate";
 import dynamic from 'next/dynamic';
 
 const Preview = dynamic(() => import('./components/preview'), { ssr: false });
 
 const BillPage = () => {
-  const [rows, setRows] = useState(
+  const [rows, setRows] = useState<RowData[]>(
     Array(7).fill(0).map(() => ({ qty: '', description: '', rate: '', amount: '' }))
   );
-  const [confirmedRows, setConfirmedRows] = useState(rows);
+  const [confirmedRows, setConfirmedRows] = useState<RowData[]>(rows);
   const handleConfirm = () => setConfirmedRows([...rows]);
 
   return (

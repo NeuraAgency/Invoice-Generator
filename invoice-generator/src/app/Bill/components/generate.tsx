@@ -2,7 +2,7 @@
 import Nav from "@/app/components/nav";
 import React, { useEffect, useState } from "react";
 
-interface RowData { qty: string; description: string; rate: string; amount?: string; }
+export interface RowData { qty: string; description: string; rate?: string; amount?: string; }
 interface GenerateProps { rows: RowData[]; setRows: React.Dispatch<React.SetStateAction<RowData[]>>; onConfirm: () => void; }
 
 const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
