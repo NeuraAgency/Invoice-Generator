@@ -10,6 +10,10 @@ type InvoiceRow = {
 	created_at: string;
 	Description: any;
 	status?: boolean;
+	DeliveryChallan?: {
+		Industry?: string;
+		GP?: string;
+	};
 };
 
 const InvoiceInqueryPage = () => {
@@ -19,6 +23,9 @@ const InvoiceInqueryPage = () => {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pendingBills, setPendingBills] = useState<Set<string | number>>(new Set());
+	const [showPrintModal, setShowPrintModal] = useState(false);
+	const [selectionRange, setSelectionRange] = useState({ from: "", to: "" });
+	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
 
 	const qs = useMemo(() => {
 		const params = new URLSearchParams();
@@ -199,6 +206,204 @@ const InvoiceInqueryPage = () => {
 		return pdfBytes;
 	};
 
+	const generateBillListSummaryPdf = async (selectedRows: InvoiceRow[]) => {
+		const pdfDoc = await PDFDocument.create();
+		const page = pdfDoc.addPage([595.28, 841.89]);
+		const { width, height } = page.getSize();
+		const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+		const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+		const drawText = (t: string, x: number, y: number, s = 12, b = false, c = rgb(0, 0, 0)) => {
+			page.drawText(t, { x, y, size: s, font: b ? fontBold : font, color: c });
+		};
+
+		// Helper to center text
+		const drawCenteredText = (t: string, y: number, s = 12, b = false, c = rgb(0, 0, 0)) => {
+			const usedFont = b ? fontBold : font;
+			const textWidth = usedFont.widthOfTextAtSize(t, s);
+			const x = (width - textWidth) / 2;
+			drawText(t, x, y, s, b, c);
+		};
+
+		const marginLeft = 40,
+			marginRight = 40,
+			contentWidth = width - marginLeft - marginRight;
+		try {
+			const logoBytes = await fetch("/zumech.png").then((r) => r.arrayBuffer());
+			const logoImage = await pdfDoc.embedPng(logoBytes);
+			const w = Math.min(420, contentWidth);
+			const h = (logoImage.height / logoImage.width) * w;
+			const lx = marginLeft + (contentWidth - w) / 2;
+			const ly = height - 20 - h;
+			page.drawImage(logoImage, { x: lx, y: ly, width: w, height: h });
+		} catch {}
+
+		const topAfterLogo = height - 120; // Moved higher from 160
+		const gap = 14;
+		const small = 10;
+		// Centered and Bolded Header Info - Moved Higher
+		drawCenteredText("Email: z.ushahid@gmail.com", topAfterLogo, small, true);
+		drawCenteredText("Contact: 03092308078", topAfterLogo - gap, small, true);
+		drawCenteredText(`Date: 12/27/2025`, topAfterLogo - 2 * gap, small, true);
+
+		// Map prefixes to company names
+		const prefixMap: Record<string, string> = {
+			"KTML": "Kassim Textile Mills Limited",
+			"MDM": "Meko Demam Mills",
+			"UFPL": "Union Fabrics Private Limited"
+		};
+
+		// Detect prefix from the first bill
+		const getPrefix = (s: any) => {
+			const match = String(s).match(/^([A-Za-z]+)/);
+			return match ? match[1].toUpperCase() : "";
+		};
+		const firstPrefix = selectedRows.length > 0 ? getPrefix(selectedRows[0].billno) : "";
+		const companyName = prefixMap[firstPrefix] || selectedRows[0]?.DeliveryChallan?.Industry || "Valued Customer";
+
+		drawCenteredText(companyName, topAfterLogo - 60, 24, true); // Company Name
+		drawCenteredText("Bill List Summary", topAfterLogo - 105, 20, true); // Increased gap (was -90)
+
+		const tableTop = topAfterLogo - 145; // Adjusted table position (was -125)
+		const tableLeft = marginLeft;
+		const tableRight = width - marginRight;
+		const tableWidth = tableRight - tableLeft;
+		
+		const colSNoW = 40, colBillW = 100, colChallanW = 100, colGPW = 100;
+		const colAmtW = tableWidth - colSNoW - colBillW - colChallanW - colGPW;
+		const headerH = 26, rowH = 24;
+
+		// Header Background
+		page.drawRectangle({ x: tableLeft, y: tableTop - headerH, width: tableWidth, height: headerH, color: rgb(0, 0, 0) });
+		const headerY = tableTop - headerH + 8;
+		drawText("S.No", tableLeft + 5, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Bill No", tableLeft + colSNoW + 10, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Challan No", tableLeft + colSNoW + colBillW + 10, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Gatepass (GP)", tableLeft + colSNoW + colBillW + colChallanW + 10, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Amount", tableLeft + colSNoW + colBillW + colChallanW + colGPW + 10, headerY, 11, true, rgb(1, 1, 1));
+
+		// Sort rows in ascending order
+		const sortedRows = [...selectedRows].sort((a, b) => {
+			const getNum = (s: any) => {
+				const n = String(s).match(/\d+$/);
+				return n ? parseInt(n[0]) : 0;
+			};
+			return getNum(a.billno) - getNum(b.billno);
+		});
+
+		const totalRows = sortedRows.length;
+		const tableHeight = headerH + totalRows * rowH;
+		const tableBottom = tableTop - tableHeight;
+
+		// Table Border
+		page.drawRectangle({ x: tableLeft, y: tableBottom, width: tableWidth, height: tableHeight, borderColor: rgb(0, 0, 0), borderWidth: 1.5 });
+
+		// Vertical lines
+		[tableLeft + colSNoW, tableLeft + colSNoW + colBillW, tableLeft + colSNoW + colBillW + colChallanW, tableLeft + colSNoW + colBillW + colChallanW + colGPW].forEach((x) => {
+			page.drawLine({ start: { x, y: tableBottom }, end: { x, y: tableTop }, color: rgb(0, 0, 0), thickness: 1 });
+		});
+
+		const toNum = (v: string) => { if (!v) return 0; const n = parseFloat(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
+		let cursorY = tableTop - headerH - 17;
+		let grandTotal = 0;
+
+		for (let i = 0; i < totalRows; i++) {
+			const row = sortedRows[i];
+			const billStr = String(row.billno).includes('-') ? String(row.billno) : String(row.billno).padStart(5, "0");
+			const challanStr = row.challanno != null ? String(row.challanno).padStart(5, "0") : "-";
+			const gpStr = row.DeliveryChallan?.GP || "-";
+			const lineItems = toRowData(row.Description);
+			const billTotal = lineItems.reduce((sum, item) => {
+				const q = toNum(item.qty);
+				const r = toNum(item.rate || item.amount);
+				return sum + q * r;
+			}, 0);
+			grandTotal += billTotal;
+
+			drawText(String(i + 1), tableLeft + 10, cursorY, 10);
+			drawText(billStr, tableLeft + colSNoW + 10, cursorY, 10);
+			drawText(challanStr, tableLeft + colSNoW + colBillW + 10, cursorY, 10);
+			drawText(gpStr, tableLeft + colSNoW + colBillW + colChallanW + 10, cursorY, 10);
+			drawText(billTotal.toFixed(2), tableLeft + colSNoW + colBillW + colChallanW + colGPW + 10, cursorY, 10);
+
+			// Row separator
+			page.drawLine({ start: { x: tableLeft, y: cursorY - 7 }, end: { x: tableRight, y: cursorY - 7 }, color: rgb(0.8, 0.8, 0.8), thickness: 0.5 });
+			cursorY -= rowH;
+		}
+
+		drawText(`Grand Total: Rs. ${grandTotal.toFixed(2)}`, tableLeft, tableBottom - 35, 14, true);
+		
+		// Receiver Signature Line
+		const sigLineY = 70;
+		page.drawLine({
+			start: { x: width - marginRight - 150, y: sigLineY },
+			end: { x: width - marginRight, y: sigLineY },
+			color: rgb(0, 0, 0),
+			thickness: 1,
+		});
+		drawText("Receiver's Signature", width - marginRight - 140, sigLineY - 15, 10, true);
+
+		drawText("Note: This is a summary report of generated bills.", marginLeft, 40, 9);
+		return await pdfDoc.save();
+	};
+
+	const applyRange = () => {
+		if (!selectionRange.from || !selectionRange.to) return;
+		const parseBill = (s: string) => {
+			const match = s.trim().match(/^([A-Za-z]+)?-?(\d+)$/);
+			if (!match) return null;
+			return { prefix: match[1] || "", num: parseInt(match[2]) };
+		};
+		const from = parseBill(selectionRange.from);
+		const to = parseBill(selectionRange.to);
+		if (!from || !to) return;
+		const newSelected = new Set(selectedBillIds);
+		results.forEach((row) => {
+			const current = parseBill(String(row.billno));
+			if (current && current.prefix === from.prefix && current.num >= from.num && current.num <= to.num) {
+				newSelected.add(String(row.billno));
+			}
+		});
+		setSelectedBillIds(newSelected);
+	};
+
+	const handlePrintSelected = async () => {
+		const toPrint = results.filter((r) => selectedBillIds.has(String(r.billno)));
+		if (toPrint.length === 0) return alert("Please select at least one bill");
+		
+		// Sort to find range for filename
+		const sorted = [...toPrint].sort((a, b) => {
+			const getNum = (s: any) => {
+				const n = String(s).match(/\d+$/);
+				return n ? parseInt(n[0]) : 0;
+			};
+			return getNum(a.billno) - getNum(b.billno);
+		});
+
+		try {
+			const bytes = await generateBillListSummaryPdf(sorted);
+			const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
+			const url = URL.createObjectURL(blob);
+			
+			// Generate Filename: Date_Start_to_End.pdf
+			const dateStr = new Date().toISOString().split('T')[0];
+			const startBill = String(sorted[0].billno).includes('-') ? String(sorted[0].billno) : String(sorted[0].billno).padStart(5, "0");
+			const endBill = String(sorted[sorted.length - 1].billno).includes('-') ? String(sorted[sorted.length - 1].billno) : String(sorted[sorted.length - 1].billno).padStart(5, "0");
+			const fileName = `${dateStr}_${startBill}_to_${endBill}.pdf`;
+
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			
+			setTimeout(() => URL.revokeObjectURL(url), 60000);
+		} catch (e) {
+			console.error(e);
+			alert("Failed to generate bill list PDF");
+		}
+	};
+
 	const handleReprint = async (row: InvoiceRow) => {
 		try {
 			const rows = toRowData(row.Description);
@@ -241,18 +446,18 @@ const InvoiceInqueryPage = () => {
 		return (
 			<div className="w-full min-w-0">
 				<div className="grid grid-cols-12 bg-[var(--accent)] text-white text-[11px] uppercase rounded-t-md min-w-0">
-					<div className="col-span-2 px-3 py-2">QTY</div>
-					<div className="col-span-7 px-3 py-2">Description</div>
-					<div className="col-span-2 px-3 py-2">Rate</div>
-					<div className="col-span-1 px-3 py-2">Amount</div>
+					<div className="col-span-1 px-3 py-2 text-center">QTY</div>
+					<div className="col-span-6 px-3 py-2">Description</div>
+					<div className="col-span-2 px-3 py-2 text-right">Rate</div>
+					<div className="col-span-3 px-3 py-2 text-right">Amount</div>
 				</div>
 				<div className="border border-[var(--accent)] border-t-0 rounded-b-md overflow-hidden">
 					{arr.map((d, i) => (
 						<div key={i} className="grid grid-cols-12 bg-black/80 text-white text-xs border-t border-white/10">
-							<div className="col-span-2 px-3 py-2">{String(d?.qty ?? d?.quantity ?? "")}</div>
-							<div className="col-span-7 px-3 py-2 break-words whitespace-normal">{String(d?.description ?? d?.materialDescription ?? "")}</div>
-							<div className="col-span-2 px-3 py-2">{String(d?.rate ?? d?.amount ?? "")}</div>
-							<div className="col-span-1 px-3 py-2">{String(d?.amount ?? "")}</div>
+							<div className="col-span-1 px-3 py-2 text-center">{String(d?.qty ?? d?.quantity ?? "")}</div>
+							<div className="col-span-6 px-3 py-2 break-words whitespace-normal">{String(d?.description ?? d?.materialDescription ?? "")}</div>
+							<div className="col-span-2 px-3 py-2 text-right">{String(d?.rate ?? d?.amount ?? "")}</div>
+							<div className="col-span-3 px-3 py-2 text-right">{String(d?.amount ?? "")}</div>
 						</div>
 					))}
 				</div>
@@ -273,10 +478,16 @@ const InvoiceInqueryPage = () => {
 							<label className="block text-[11px] font-medium text-white">Bill Number</label>
 							<input type="text" value={billQuery} onChange={(e) => setBillQuery(e.target.value)} className="mt-1 w-40 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 12 or 00012" />
 						</div>
-						<div>
+						<div className="flex flex-col">
 							<label className="block text-[11px] font-medium text-white">Challan Number</label>
 							<input type="text" value={challanQuery} onChange={(e) => setChallanQuery(e.target.value)} className="mt-1 w-40 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 34 or 00034" />
 						</div>
+						<button onClick={() => setShowPrintModal(true)} className="bg-[var(--accent)] text-black px-4 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2">
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+							</svg>
+							Print Bill List
+						</button>
 					</div>
 					<div className="mt-4 text-xs text-white/70">{loading ? "Loading..." : error ? `Error: ${error}` : `${results.length} result(s)`}</div>
 					<div className="mt-4 overflow-auto rounded-xl border border-white/10 h-[70vh] max-h-[70vh] bg-black p-2">
@@ -323,6 +534,86 @@ const InvoiceInqueryPage = () => {
 					</div>
 				</div>
 			</div>
+			{showPrintModal && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+					<div className="w-full max-w-4xl bg-[#1e1e1e] border border-[var(--accent)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+						<div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/40">
+							<div>
+								<h2 className="text-xl font-bold text-white">Select Bills for List</h2>
+								<p className="text-xs text-white/50 mt-1">Select a range or individual bills to print</p>
+							</div>
+							<button onClick={() => setShowPrintModal(false)} className="text-white/50 hover:text-white transition">
+								<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+							</button>
+						</div>
+						<div className="p-6 flex-1 overflow-auto space-y-6">
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
+								<div className="space-y-2">
+									<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">From Bill</label>
+									<input type="text" value={selectionRange.from} onChange={e => setSelectionRange(prev => ({ ...prev, from: e.target.value }))} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" placeholder="e.g. KTML-0001" />
+								</div>
+								<div className="space-y-2">
+									<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">To Bill</label>
+									<input type="text" value={selectionRange.to} onChange={e => setSelectionRange(prev => ({ ...prev, to: e.target.value }))} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" placeholder="e.g. KTML-0010" />
+								</div>
+								<button onClick={applyRange} className="bg-[var(--accent)] text-black px-6 py-2.5 rounded-lg text-xs font-bold hover:opacity-90 transition active:scale-95">Apply Range</button>
+							</div>
+							<div className="rounded-xl border border-white/10 overflow-hidden">
+								<table className="w-full text-left text-xs">
+									<thead className="bg-[var(--accent)] text-black font-bold">
+										<tr>
+											<th className="px-4 py-3 w-10">
+												<input type="checkbox" onChange={e => setSelectedBillIds(e.target.checked ? new Set(results.map(r => String(r.billno))) : new Set())} checked={selectedBillIds.size === results.length && results.length > 0} className="rounded accent-black" />
+											</th>
+											<th className="px-4 py-3 w-12">S.No</th>
+											<th className="px-4 py-3">Bill No</th>
+											<th className="px-4 py-3">Challan No</th>
+											<th className="px-4 py-3">Gatepass (GP)</th>
+											<th className="px-4 py-3 text-right">Amount</th>
+										</tr>
+									</thead>
+									<tbody className="divide-y divide-white/5 bg-black/20">
+										{results.map((row, idx) => {
+											const items = toRowData(row.Description);
+											const toNum = (v: string) => { if (!v) return 0; const n = parseFloat(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
+											const total = items.reduce((sum, item) => sum + (toNum(item.qty) * toNum(item.rate || item.amount)), 0);
+											const id = String(row.billno);
+											return (
+												<tr key={id} className={`hover:bg-white/5 transition-colors ${selectedBillIds.has(id) ? 'bg-[var(--accent)]/10' : ''}`}>
+													<td className="px-4 py-3">
+														<input type="checkbox" checked={selectedBillIds.has(id)} onChange={() => setSelectedBillIds(prev => {
+															const n = new Set(prev);
+															if (n.has(id)) n.delete(id); else n.add(id);
+															return n;
+														})} className="rounded accent-[var(--accent)]" />
+													</td>
+													<td className="px-4 py-3 text-white/50">{idx + 1}</td>
+													<td className="px-4 py-3 font-medium text-white">{String(row.billno).padStart(5, '0')}</td>
+													<td className="px-4 py-3 text-white/70">{row.challanno != null ? String(row.challanno).padStart(5, '0') : '-'}</td>
+													<td className="px-4 py-3 text-white/70">{row.DeliveryChallan?.GP || '-'}</td>
+													<td className="px-4 py-3 text-right font-mono text-[var(--accent)]">{total.toFixed(2)}</td>
+												</tr>
+											);
+										})}
+									</tbody>
+								</table>
+							</div>
+						</div>
+						<div className="p-6 border-t border-white/10 flex justify-between items-center bg-black/40">
+							<div className="text-xs text-white/50">
+								<span className="text-[var(--accent)] font-bold">{selectedBillIds.size}</span> bills selected
+							</div>
+							<div className="flex gap-3">
+								<button onClick={() => setShowPrintModal(false)} className="px-5 py-2 rounded-lg text-xs font-bold text-white/70 hover:text-white transition">Cancel</button>
+								<button onClick={handlePrintSelected} className="bg-[var(--accent)] text-black px-8 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2">
+									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+									Print Bill List
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };
