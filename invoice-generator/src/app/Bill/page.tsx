@@ -7,7 +7,7 @@ const Preview = dynamic(() => import('./components/preview'), { ssr: false });
 
 const BillPage = () => {
   const [rows, setRows] = useState(
-    Array(7).fill(0).map(() => ({ qty: '', description: '', amount: '' }))
+    Array(7).fill(0).map(() => ({ qty: '', description: '', rate: '', amount: '' }))
   );
   const [confirmedRows, setConfirmedRows] = useState(rows);
   const handleConfirm = () => setConfirmedRows([...rows]);
