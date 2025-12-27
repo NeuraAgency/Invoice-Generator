@@ -92,12 +92,15 @@ const InvoiceInqueryPage = () => {
 				const a = Number(d?.amount || 0);
 				perPiece = q ? String((a / q).toFixed(2)) : String(a);
 			}
-			return { qty, description, amount: perPiece };
+			// Return both rate (per-piece) and original amount when available
+			return { qty, description, rate: perPiece, amount: d?.amount ?? "" };
 		});
 	};
 
 	const generateInvoicePdfBytes = async (
-		rows: { qty: string; description: string; amount: string }[],
+		rows: {
+			rate: string; qty: string; description: string; amount: string 
+}[],
 		meta: { bill?: string; challan?: string; gp?: string }
 	) => {
 		const pdfDoc = await PDFDocument.create();
@@ -151,21 +154,25 @@ const InvoiceInqueryPage = () => {
 		const headerH = 24,
 			rowH = 22,
 			colQtyW = 60,
+			colRateW = 90,
 			colAmtW = 90,
-			colDescW = tableWidth - colQtyW - colAmtW;
+			colDescW = tableWidth - colQtyW - colRateW - colAmtW;
 		page.drawRectangle({ x: tableLeft, y: tableTop - headerH, width: tableWidth, height: headerH, color: rgb(0, 0, 0) });
 		const headerY = tableTop - headerH + 7;
 		drawText("Qty", tableLeft + 10, headerY, 11, true, rgb(1, 1, 1));
 		drawText("Description", tableLeft + colQtyW + 10, headerY, 11, true, rgb(1, 1, 1));
-		drawText("Amount", tableLeft + colQtyW + colDescW + 10, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Rate", tableLeft + colQtyW + colDescW + 10, headerY, 11, true, rgb(1, 1, 1));
+		drawText("Amount", tableLeft + colQtyW + colDescW + colRateW + 10, headerY, 11, true, rgb(1, 1, 1));
 		const totalRows = Math.max(rows.length, 6);
 		const tableHeight = headerH + totalRows * rowH;
 		const tableBottom = tableTop - tableHeight;
 		page.drawRectangle({ x: tableLeft, y: tableBottom, width: tableWidth, height: tableHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
 		const xCol1 = tableLeft + colQtyW;
 		const xCol2 = tableLeft + colQtyW + colDescW;
+		const xCol3 = tableLeft + colQtyW + colDescW + colRateW;
 		page.drawLine({ start: { x: xCol1, y: tableBottom }, end: { x: xCol1, y: tableTop }, color: rgb(0, 0, 0), thickness: 1 });
 		page.drawLine({ start: { x: xCol2, y: tableBottom }, end: { x: xCol2, y: tableTop }, color: rgb(0, 0, 0), thickness: 1 });
+		page.drawLine({ start: { x: xCol3, y: tableBottom }, end: { x: xCol3, y: tableTop }, color: rgb(0, 0, 0), thickness: 1 });
 		page.drawLine({ start: { x: tableLeft, y: tableTop - headerH }, end: { x: tableRight, y: tableTop - headerH }, color: rgb(0, 0, 0), thickness: 1 });
 		const toNum = (v: string) => { if (!v) return 0; const n = parseFloat(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
 		let cursorY = tableTop - headerH - 15;
@@ -173,16 +180,19 @@ const InvoiceInqueryPage = () => {
 			const r = rows[i];
 			if (r) {
 				const qtyNum = toNum(r.qty);
-				const rateNum = toNum(r.amount);
+				const rateNum = toNum(r.rate ?? r.amount ?? "");
 				const lineTotal = qtyNum * rateNum;
 				drawText(r.qty || "", tableLeft + 10, cursorY, 10);
 				drawText(r.description || "", tableLeft + colQtyW + 10, cursorY, 10);
-				drawText(lineTotal ? lineTotal.toFixed(2) : "", tableLeft + colQtyW + colDescW + 10, cursorY, 10);
+				// Rate column
+				drawText(rateNum ? rateNum.toFixed(2) : r.rate ?? r.amount ?? "", tableLeft + colQtyW + colDescW + 10, cursorY, 10);
+				// Amount column (qty * rate)
+				drawText(lineTotal ? lineTotal.toFixed(2) : "", tableLeft + colQtyW + colDescW + colRateW + 10, cursorY, 10);
 			}
 			page.drawLine({ start: { x: tableLeft, y: cursorY - 6 }, end: { x: tableRight, y: cursorY - 6 }, color: rgb(0, 0, 0), thickness: 0.5 });
 			cursorY -= rowH;
 		}
-		const total = rows.reduce((sum, r) => { const qtyNum = toNum(r.qty); const rateNum = toNum(r.amount); return sum + qtyNum * rateNum; }, 0);
+		const total = rows.reduce((sum, r) => { const qtyNum = toNum(r.qty); const rateNum = toNum(r.rate ?? r.amount ?? ""); return sum + qtyNum * rateNum; }, 0);
 		drawText(`Total: Rs. ${total.toFixed(2)}`, tableLeft, tableBottom - 20, 12, true);
 		drawText("Note: This is a computer-generated document and does not require a signature.", marginLeft, 40, 9);
 		const pdfBytes = await pdfDoc.save();
@@ -232,15 +242,17 @@ const InvoiceInqueryPage = () => {
 			<div className="w-full min-w-0">
 				<div className="grid grid-cols-12 bg-[var(--accent)] text-white text-[11px] uppercase rounded-t-md min-w-0">
 					<div className="col-span-2 px-3 py-2">QTY</div>
-					<div className="col-span-8 px-3 py-2">Description</div>
-					<div className="col-span-2 px-3 py-2">Amount</div>
+					<div className="col-span-7 px-3 py-2">Description</div>
+					<div className="col-span-2 px-3 py-2">Rate</div>
+					<div className="col-span-1 px-3 py-2">Amount</div>
 				</div>
 				<div className="border border-[var(--accent)] border-t-0 rounded-b-md overflow-hidden">
 					{arr.map((d, i) => (
 						<div key={i} className="grid grid-cols-12 bg-black/80 text-white text-xs border-t border-white/10">
 							<div className="col-span-2 px-3 py-2">{String(d?.qty ?? d?.quantity ?? "")}</div>
-							<div className="col-span-8 px-3 py-2 break-words whitespace-normal">{String(d?.description ?? d?.materialDescription ?? "")}</div>
-							<div className="col-span-2 px-3 py-2">{String(d?.amount ?? "")}</div>
+							<div className="col-span-7 px-3 py-2 break-words whitespace-normal">{String(d?.description ?? d?.materialDescription ?? "")}</div>
+							<div className="col-span-2 px-3 py-2">{String(d?.rate ?? d?.amount ?? "")}</div>
+							<div className="col-span-1 px-3 py-2">{String(d?.amount ?? "")}</div>
 						</div>
 					))}
 				</div>

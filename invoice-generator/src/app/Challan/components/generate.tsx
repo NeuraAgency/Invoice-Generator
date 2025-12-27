@@ -299,7 +299,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
               <input
                 type="text"
                 value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCompanyName(val);
+                  try {
+                    localStorage.setItem('invoiceCompanyName', val);
+                  } catch {}
+                }}
                 className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
                 placeholder="Company Name"
               />
@@ -357,47 +363,47 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
         </div>
       </div>
 
-      <div className="mt-6 flex flex-col gap-3">
-        {/* Custom orange checkbox */}
-        <label className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 transition cursor-pointer">
-          {/* visually hidden native checkbox */}
-          <input
-            type="checkbox"
-            checked={sampleReturned}
-            onChange={(e) => {
-              const val = e.target.checked;
-              setSampleReturned(val);
-              try {
-                localStorage.setItem("sampleReturned", val ? "true" : "false");
-              } catch {}
-            }}
-            className="sr-only peer"
-          />
-          {/* custom box */}
-          <span className="flex h-4 w-4 items-center justify-center rounded-[3px] border border-[var(--accent)] bg-transparent peer-checked:bg-[var(--accent)] peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-0 transition-colors">
-            {/* check mark */}
-            <svg
-              className="h-3 w-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 8.5 6.5 12 13 4" />
-            </svg>
-          </span>
-          <span className="select-none">Sample have been returned</span>
-        </label>
+      <div className="mt-6 w-full">
+        <div className="flex flex-wrap gap-3 items-center">
+          <label className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 transition cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sampleReturned}
+              onChange={(e) => {
+                const val = e.target.checked;
+                setSampleReturned(val);
+                try {
+                  localStorage.setItem("sampleReturned", val ? "true" : "false");
+                } catch {}
+              }}
+              className="sr-only peer"
+            />
+            <span className="flex h-4 w-4 items-center justify-center rounded-[3px] border border-[var(--accent)] bg-transparent peer-checked:bg-[var(--accent)] peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-0 transition-colors">
+              <svg
+                className="h-3 w-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 8.5 6.5 12 13 4" />
+              </svg>
+            </span>
+            <span className="select-none">Sample have been returned</span>
+          </label>
 
-        <button
-          className="bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-60"
-          onClick={handleGenerate}
-          disabled={generating}
-        >
-          {generating ? "Generating…" : "Generate"}
-        </button>
+          <button className='flex-1 sm:flex-none bg-[var(--accent)] py-2 px-4 rounded-lg text-xs font-medium text-white hover:opacity-90 transition' onClick={onConfirm}>Update Preview</button>
+
+          <button
+            className="flex-1 sm:flex-none bg-[var(--accent)] py-2 px-5 rounded-lg text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-60"
+            onClick={handleGenerate}
+            disabled={generating}
+          >
+            {generating ? "Generating…" : "Generate"}
+          </button>
+        </div>
         {errorMsg && <div className="text-red-400 text-xs mt-2">{errorMsg}</div>}
       </div>
     </div>

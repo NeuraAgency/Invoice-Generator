@@ -4,7 +4,8 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 interface RowData {
   qty: string;
   description: string;
-  amount: string;
+  rate?: string;
+  amount?: string;
 }
 const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -102,8 +103,9 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       const headerH = 24,
         rowH = 22,
         colQtyW = 60,
+        colRateW = 90,
         colAmtW = 90,
-        colDescW = tableWidth - colQtyW - colAmtW;
+        colDescW = tableWidth - colQtyW - colRateW - colAmtW;
       page.drawRectangle({
         x: tableLeft,
         y: tableTop - headerH,
@@ -122,8 +124,16 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
         rgb(1, 1, 1)
       );
       drawText(
-        "Amount",
+        "Rate",
         tableLeft + colQtyW + colDescW + 10,
+        headerY,
+        11,
+        true,
+        rgb(1, 1, 1)
+      );
+      drawText(
+        "Amount",
+        tableLeft + colQtyW + colDescW + colRateW + 10,
         headerY,
         11,
         true,
@@ -142,6 +152,7 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       });
       const xCol1 = tableLeft + colQtyW;
       const xCol2 = tableLeft + colQtyW + colDescW;
+      const xCol3 = tableLeft + colQtyW + colDescW + colRateW;
       page.drawLine({
         start: { x: xCol1, y: tableBottom },
         end: { x: xCol1, y: tableTop },
@@ -151,6 +162,13 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       page.drawLine({
         start: { x: xCol2, y: tableBottom },
         end: { x: xCol2, y: tableTop },
+        color: rgb(0, 0, 0),
+        thickness: 1,
+      });
+      // vertical separator between Rate and Amount
+      page.drawLine({
+        start: { x: xCol3, y: tableBottom },
+        end: { x: xCol3, y: tableTop },
         color: rgb(0, 0, 0),
         thickness: 1,
       });
@@ -170,13 +188,21 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
         const r = rows[i];
         if (r) {
           const qtyNum = toNum(r.qty);
-          const rateNum = toNum(r.amount);
+          const rateNum = toNum(r.rate ?? r.amount ?? "");
           const lineTotal = qtyNum * rateNum;
           drawText(r.qty || "", tableLeft + 10, cursorY, 10);
           drawText(r.description || "", tableLeft + colQtyW + 10, cursorY, 10);
+          // Rate column
+          drawText(
+            rateNum ? rateNum.toFixed(2) : r.rate || r.amount || "",
+            tableLeft + colQtyW + colDescW + 10,
+            cursorY,
+            10
+          );
+          // Amount column (qty * rate)
           drawText(
             lineTotal ? lineTotal.toFixed(2) : "",
-            tableLeft + colQtyW + colDescW + 10,
+            tableLeft + colQtyW + colDescW + colRateW + 10,
             cursorY,
             10
           );
@@ -191,7 +217,7 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       }
       const total = rows.reduce((sum, r) => {
         const qtyNum = toNum(r.qty);
-        const rateNum = toNum(r.amount);
+        const rateNum = toNum(r.rate ?? r.amount ?? "");
         return sum + qtyNum * rateNum;
       }, 0);
       drawText(

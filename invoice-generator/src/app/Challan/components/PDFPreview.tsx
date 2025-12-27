@@ -125,7 +125,12 @@ export default function Preview(props: PDFPreviewProps) {
       const date = new Date().toLocaleDateString();
       const PO = effectivePo || "";
       const challan = effectiveChallan || "";
-      const Company_Name = "Kassim Textile Mills Limited";
+      // Determine company name: prefer stored invoiceCompanyName for consistency with Bill preview
+      let Company_Name = "Kassim Textile Mills Limited";
+      try {
+        const stored = localStorage.getItem('invoiceCompanyName');
+        if (stored) Company_Name = stored;
+      } catch {}
 
       drawLabelValue("Email", "z.ushahid@gmail.com", leftColX, topAfterLogo, smallSize);
       drawLabelValue("Contact", "03092308078", leftColX, topAfterLogo - lineGap, smallSize);
