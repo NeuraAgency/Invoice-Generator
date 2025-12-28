@@ -1,52 +1,7 @@
 import Link from "next/link";
+import { getSupabaseAdminClient } from "../lib/supabaseServer";
 
-const stats = [
-  {
-    label: "Invoices",
-    value: "24",
-    hint: "3 due today",
-    href: "/Bill",
-  },
-  {
-    label: "Quotations",
-    value: "12",
-    hint: "2 awaiting approval",
-    href: "/Quotation",
-  },
-  {
-    label: "Delivery Challans",
-    value: "18",
-    hint: "5 in transit",
-    href: "/Challan",
-  },
-  {
-    label: "Uploads",
-    value: "132",
-    hint: "OCR ready",
-    href: "/Datacenter",
-  },
-];
-
-const quickActions = [
-  {
-    title: "New Invoice",
-    desc: "Create and send to client",
-    href: "/Bill",
-    tone: "from-orange-500 to-orange-600",
-  },
-  {
-    title: "New Quotation",
-    desc: "Draft and share pricing",
-    href: "/Quotation",
-    tone: "from-slate-800 to-slate-950",
-  },
-  {
-    title: "Upload Documents",
-    desc: "Process with OCR and extract",
-    href: "/Datacenter",
-    tone: "from-emerald-500 to-emerald-600",
-  },
-];
+// quickActions removed — replaced by monthly totals graph
 
 const timeline = [
   {
@@ -71,7 +26,95 @@ const timeline = [
   },
 ];
 
-const page = () => {
+const page = async () => {
+  const supabase = getSupabaseAdminClient();
+
+  const [challansRes, invoicesRes] = await Promise.all([
+    supabase.from("DeliveryChallan").select("challanno"),
+    supabase.from("invoice").select("challanno, created_at, Description"),
+  ]);
+
+  const challans = challansRes.data ?? [];
+  const invoices = invoicesRes.data ?? [];
+
+  const challanCount = challans.length;
+  const invoiceCount = invoices.length;
+
+  const invoicedChallanSet = new Set<number>(
+    invoices.map((i: any) => i.challanno).filter((c: any) => c != null)
+  );
+
+  const dueBillsCount = challans.filter((c: any) => !invoicedChallanSet.has(c.challanno)).length;
+
+  const stats = [
+    {
+      label: "Invoices",
+      value: String(invoiceCount),
+      hint: `${dueBillsCount} due`,
+      href: "/Bill",
+    },
+    {
+      label: "Quotations",
+      value: "12",
+      hint: "2 awaiting approval",
+      href: "/Quotation",
+    },
+    {
+      label: "Delivery Challans",
+      value: String(challanCount),
+      hint: "",
+      href: "/Challan",
+    },
+    {
+      label: "Uploads",
+      value: "132",
+      hint: "OCR ready",
+      href: "/Datacenter",
+    },
+  ];
+  // Build monthly totals for invoices (last 12 months)
+  const parseItems = (desc: any) => {
+    if (!desc) return [];
+    if (Array.isArray(desc)) return desc;
+    return [desc];
+  };
+
+  const itemLineTotal = (d: any) => {
+    const qty = Number(d?.qty ?? d?.quantity ?? 0) || 0;
+    let rate = 0;
+    if (d?.rate != null) rate = Number(d.rate) || 0;
+    else if (d?.amount != null) {
+      const a = Number(d.amount) || 0;
+      rate = qty ? a / qty : a;
+    }
+    return qty * rate;
+  };
+
+  const monthsBack = 12;
+  const monthKeys: string[] = [];
+  const now = new Date();
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  const totalsMap: Record<string, number> = {};
+  monthKeys.forEach((k) => (totalsMap[k] = 0));
+
+  for (const inv of invoices) {
+    const created = inv?.created_at ? new Date(inv.created_at) : null;
+    if (!created || Number.isNaN(created.getTime())) continue;
+    const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}`;
+    const items = parseItems(inv?.Description);
+    const billTotal = items.reduce((s: number, it: any) => s + itemLineTotal(it), 0);
+    if (key in totalsMap) totalsMap[key] += billTotal;
+  }
+
+  const chartLabels = monthKeys.map((k) => {
+    const [y, m] = k.split("-");
+    const mm = new Date(Number(y), Number(m) - 1).toLocaleString(undefined, { month: "short" });
+    return `${mm}`;
+  });
+  const chartValues = monthKeys.map((k) => totalsMap[k] || 0);
   return (
     <main className="flex-1 h-screen overflow-y-auto bg-black text-white pt-16 lg:pt-0">
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
@@ -124,42 +167,68 @@ const page = () => {
         <div className="grid gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Quick actions</h2>
-              <Link href="/Datacenter" className="text-sm font-semibold text-[var(--accent)] hover:text-white">
-                View all
-              </Link>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {quickActions.map((action) => (
-                <Link
-                  key={action.title}
-                  href={action.href}
-                  className={`rounded-2xl bg-gradient-to-br ${action.tone} text-white px-5 py-4 shadow-lg shadow-slate-900/10 hover:translate-y-[-2px] transition duration-200`}
-                >
-                  <p className="text-sm font-semibold uppercase tracking-wide/relaxed opacity-80">
-                    {action.title}
-                  </p>
-                  <p className="text-sm mt-1 opacity-90">{action.desc}</p>
-                </Link>
-              ))}
+              <h2 className="text-lg font-semibold text-white">Monthly Bill Totals</h2>
+              <span className="text-sm font-semibold text-slate-400">Last 12 months</span>
             </div>
 
             <div className="card-custom border card-border rounded-2xl p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-black">Upload & Extract</p>
-                  <p className="text-sm text-slate-600">Drop files to extract line items, totals, and parties instantly.</p>
-                </div>
-                <Link
-                  href="/Datacenter"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] text-white px-4 py-2 text-sm font-semibold shadow-sm hover:brightness-95"
-                >
-                  Go to uploads
-                </Link>
-              </div>
-              <div className="mt-4 border border-dashed border-slate-300 rounded-xl bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                <p className="font-semibold text-black">Quick tip</p>
-                <p>Use standardized file names (e.g., INV-204.pdf) to keep extraction logs tidy.</p>
+              <div className="w-full overflow-x-auto">
+                {/* Server-rendered SVG chart */}
+                {(() => {
+                  const maxVal = Math.max(...chartValues, 1);
+                  const barW = 40;
+                  const gap = 12;
+                  const svgW = chartValues.length * (barW + gap) + 40;
+                  const svgH = 220;
+                  const chartH = svgH - 40;
+                  return (
+                    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-56">
+                      <defs>
+                        <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor="#fb923c" />
+                          <stop offset="100%" stopColor="#f97316" />
+                        </linearGradient>
+                      </defs>
+                      <style>{`
+                        .bar text.value { opacity: 0; }
+                        .bar .tooltip { opacity: 0; pointer-events: none; transition: opacity 0.12s ease, transform 0.12s ease; }
+                        .bar:hover .tooltip { opacity: 1; pointer-events: auto; }
+                        text.label { fill: #000; }
+                        text.value { fill: #000; font-weight: 600; }
+                      `}</style>
+                      {/* bars */}
+                      {chartValues.map((v, i) => {
+                        const x = 20 + i * (barW + gap);
+                        const h = (v / maxVal) * chartH;
+                        const y = svgH - 30 - h;
+                        return (
+                          <g key={i} className="bar">
+                            <rect x={x} y={y} width={barW} height={h} rx={6} fill="url(#grad)" opacity={0.95} />
+
+                            {/* tooltip: hidden by default, shown on hover of parent .bar */}
+                            {/* position tooltip at the center of the bar (horizontal center, vertical middle) */}
+                            <g className="tooltip" transform={`translate(${x + barW / 2}, ${y + h / 2})`}>
+                              {/* subtle drop shadow */}
+                              <filter id={`f${i}`} x="-50%" y="-50%" width="200%" height="200%">
+                                <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.12" />
+                              </filter>
+                              <g filter={`url(#f${i})`}>
+                                <rect x={-52} y={-20} width={107} height={36} rx={8} fill="#ffffff" stroke="#e5e7eb" />
+                              </g>
+                              <circle cx={-30} cy={0} r={6} fill="#16a34a" stroke="#0f766e" strokeWidth={0.5} />
+                              <text x={-16} y={4} fontSize={12} fill="#000" fontWeight={600} textAnchor="start">{v ? v.toFixed(2) : "0.00"}</text>
+                            </g>
+
+                            <text className="value" x={x + barW / 2} y={y - 6} fontSize={11} textAnchor="middle">{v ? v.toFixed(0) : ""}</text>
+                            <text className="label" x={x + barW / 2} y={svgH - 10} fontSize={12} textAnchor="middle">{chartLabels[i]}</text>
+                          </g>
+                        );
+                      })}
+                      {/* y-axis baseline */}
+                      <line x1={10} y1={svgH - 30} x2={svgW - 10} y2={svgH - 30} stroke="#374151" strokeWidth={1} />
+                    </svg>
+                  );
+                })()}
               </div>
             </div>
           </div>
