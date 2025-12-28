@@ -88,20 +88,20 @@ const Navbar = () => {
       {/* Sidebar */}
       <div className={`
         fixed lg:static inset-y-0 left-0 z-50
-        transition-transform duration-300 ease-in-out
+        transition-all duration-500 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        w-[280px] lg:min-w-[260px] h-screen bg-[var(--accent)] flex flex-col items-center shadow-2xl lg:shadow-none
+        w-[280px] lg:min-w-[260px] h-screen bg-[#ea580c] flex flex-col items-center shadow-2xl lg:shadow-[20px_0_60px_rgba(0,0,0,0.1)]
       `}>
-        <div className="mt-8 lg:mt-3 flex items-center gap-3">
-          <Link href="/">
-            <img src="/logo.png" alt="logo" className='w-40 lg:w-44 cursor-pointer' />
+        <div className="mt-8 lg:mt-6 flex items-center gap-3 px-6 w-full justify-between">
+          <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+            <img src="/logo.png" alt="logo" className='w-32 lg:w-36 filter brightness-0 invert' />
           </Link>
 
           <button
             aria-pressed={theme === 'dark'}
             onClick={toggleTheme}
             title="Toggle theme"
-            className="ml-2 rounded-full bg-white/10 hover:bg-white/20 text-white p-2 transition-colors"
+            className="rounded-xl bg-black/10 hover:bg-black/20 text-white p-2.5 transition-all active:scale-90"
           >
             {theme === 'dark' ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="currentColor"/></svg>
@@ -111,36 +111,39 @@ const Navbar = () => {
           </button>
         </div>
 
-        <div className="flex flex-col justify-center mt-10 lg:mt-6 font-semibold text-[13px] lg:text-[12px] text-white pl-0 gap-2 w-full">
-          <Link href='/Datacenter' className={`nav-link roundborder2 ${makeActive('/Datacenter') ? 'active' : ''}`}>
-            <span className="nav-icon" aria-hidden>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v4c0 1.38 3.134 2.5 7 2.5s7-1.12 7-2.5V5"/><ellipse cx="12" cy="13.5" rx="7" ry="2.5"/></svg>
+        <div className="flex flex-col mt-10 lg:mt-12 font-bold text-[11px] text-white/90 gap-1.5 w-full px-3">
+          <p className="px-4 mb-2 text-[10px] uppercase tracking-[0.2em] text-white/40">Navigation</p>
+          
+          <Link href='/Datacenter' className={`nav-link-premium ${makeActive('/Datacenter') ? 'active' : ''}`}>
+            <span className="nav-icon-bg">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v4c0 1.38 3.134 2.5 7 2.5s7-1.12 7-2.5V5"/><ellipse cx="12" cy="13.5" rx="7" ry="2.5"/></svg>
             </span>
-            <span className="nav-label">Purchase Order and Gate Pass</span>
+            <span className="nav-label-text tracking-tight uppercase">PO & Gate Pass</span>
           </Link>
 
-          <Link href='/Challan' className={`nav-link roundborder2 ${makeActive('/Challan') ? 'active' : ''}`}>
-            <span className="nav-icon" aria-hidden>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3a1 1 0 0 1-1 1h-2"/><circle cx="7.5" cy="19.5" r="1.5"/><circle cx="18.5" cy="19.5" r="1.5"/></svg>
+          <Link href='/Challan' className={`nav-link-premium ${makeActive('/Challan') ? 'active' : ''}`}>
+            <span className="nav-icon-bg">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3a1 1 0 0 1-1 1h-2"/><circle cx="7.5" cy="19.5" r="1.5"/><circle cx="18.5" cy="19.5" r="1.5"/></svg>
             </span>
-            <span className="nav-label">Generate Delivery Challan</span>
+            <span className="nav-label-text tracking-tight uppercase">Delivery Challan</span>
           </Link>
 
-          <Link href='/Bill' className={`nav-link roundborder2 ${makeActive('/Bill') ? 'active' : ''}`}>
-            <span className="nav-icon" aria-hidden>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="2" width="14" height="20" rx="2"/><path d="M7 7h6M7 11h6M7 15h6"/></svg>
+          <Link href='/Bill' className={`nav-link-premium ${makeActive('/Bill') ? 'active' : ''}`}>
+            <span className="nav-icon-bg">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="2" width="14" height="20" rx="2"/><path d="M7 7h6M7 11h6M7 15h6"/></svg>
             </span>
-            <span className="nav-label">Generate Invoices</span>
+            <span className="nav-label-text tracking-tight uppercase">Invoices</span>
           </Link>
 
-          <Link href='/Quotation' className={`nav-link roundborder2 ${makeActive('/Quotation') ? 'active' : ''}`}>
-            <span className="nav-icon" aria-hidden>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 7a4 4 0 11-4 4"/><path d="M20 7a4 4 0 11-4 4"/><path d="M2 21h20"/></svg>
+          <Link href='/Quotation' className={`nav-link-premium ${makeActive('/Quotation') ? 'active' : ''}`}>
+            <span className="nav-icon-bg">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 7a4 4 0 11-4 4"/><path d="M20 7a4 4 0 11-4 4"/><path d="M2 21h20"/></svg>
             </span>
-            <span className="nav-label">Generate Quotation</span>
+            <span className="nav-label-text tracking-tight uppercase">Quotation</span>
           </Link>
         </div>
       </div>
+
     </>
   )
 }

@@ -313,8 +313,10 @@ const InvoiceInqueryPage = () => {
 			const gpStr = row.DeliveryChallan?.GP || "-";
 			const lineItems = toRowData(row.Description);
 			const billTotal = lineItems.reduce((sum, item) => {
+				const a = toNum(item.amount);
+				if (a > 0) return sum + a;
 				const q = toNum(item.qty);
-				const r = toNum(item.rate || item.amount);
+				const r = toNum(item.rate);
 				return sum + q * r;
 			}, 0);
 			grandTotal += billTotal;
@@ -576,7 +578,11 @@ const InvoiceInqueryPage = () => {
 										{results.map((row, idx) => {
 											const items = toRowData(row.Description);
 											const toNum = (v: string) => { if (!v) return 0; const n = parseFloat(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
-											const total = items.reduce((sum, item) => sum + (toNum(item.qty) * toNum(item.rate || item.amount)), 0);
+											const total = items.reduce((sum, item) => {
+												const a = toNum(item.amount);
+												if (a > 0) return sum + a;
+												return sum + (toNum(item.qty) * toNum(item.rate));
+											}, 0);
 											const id = String(row.billno);
 											return (
 												<tr key={id} className={`hover:bg-white/5 transition-colors ${selectedBillIds.has(id) ? 'bg-[var(--accent)]/10' : ''}`}>

@@ -1,37 +1,67 @@
-.roundborder{
-    border-radius: 0px 50px 50px 0px;
-}
-.roundborder2{
-    border-radius: 25px 0px 0px 25px;
-        transition: background 0.18s, color 0.18s, transform 0.08s;
-}
-
-/* New nav item styles */
-.nav-link {
+/* Premium Sidebar Navigation Styles */
+.nav-link-premium {
     display: flex;
     align-items: center;
     width: 100%;
     box-sizing: border-box;
-    padding: 12px 16px;
-    color: white;
+    padding: 10px 16px;
+    color: rgba(255, 255, 255, 0.9);
     text-decoration: none;
-    border-radius: 25px 0 0 25px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
 }
 
-.nav-link .nav-icon { display:inline-flex; align-items:center; justify-content:center; margin-right:10px; color: rgba(255,255,255,0.95); width:18px; height:18px; }
-.nav-link .nav-label { font-weight:600; font-size:13px; color: rgba(255,255,255,0.95); }
-
-.nav-link:hover,
-.nav-link:focus,
-.nav-link.active {
-    background: black !important;
-    color: var(--accent) !important;
+.nav-link-premium .nav-icon-bg {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    flex-shrink: 0;
 }
 
-.nav-link:hover .nav-label,
-.nav-link:focus .nav-label,
-.nav-link.active .nav-label { color: var(--accent) !important; }
+.nav-link-premium:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: white;
+    transform: translateX(4px);
+}
 
-.nav-link.active .nav-icon,
-.nav-link:hover .nav-icon,
-.nav-link:focus .nav-icon { color: var(--accent) !important; }
+.nav-link-premium:hover .nav-icon-bg {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.nav-link-premium.active {
+    background: #000000;
+    /* Pure black background for active state */
+    color: #f97316;
+    /* Vibrant orange text */
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.nav-link-premium.active .nav-icon-bg {
+    background: rgba(249, 115, 22, 0.1);
+    color: #f97316;
+}
+
+.nav-link-premium .nav-label-text {
+    font-size: 11px;
+    font-weight: 700;
+    transition: all 0.3s ease;
+    letter-spacing: 0.02em;
+}
+
+.nav-link-premium.active .nav-label-text {
+    transform: translateX(2px);
+}
+
+/* Custom shadow for sidebar */
+.lg\:shadow-\[20px_0_60px_rgba\(0\,0\,0\,0\.1\)\] {
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.1);
+}

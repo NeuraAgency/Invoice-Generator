@@ -31,7 +31,10 @@ const page = async () => {
 
   const [challansRes, invoicesRes] = await Promise.all([
     supabase.from("DeliveryChallan").select("challanno"),
-    supabase.from("invoice").select("challanno, created_at, Description"),
+    supabase.from("invoice")
+      .select("challanno, created_at, Description")
+      .order("created_at", { ascending: false })
+      .limit(2000),
   ]);
 
   const challans = challansRes.data ?? [];
@@ -79,15 +82,21 @@ const page = async () => {
     return [desc];
   };
 
+  const toNum = (v: any) => {
+    if (!v) return 0;
+    if (typeof v === "number") return v;
+    const n = parseFloat(String(v).replace(/,/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const itemLineTotal = (d: any) => {
-    const qty = Number(d?.qty ?? d?.quantity ?? 0) || 0;
-    let rate = 0;
-    if (d?.rate != null) rate = Number(d.rate) || 0;
-    else if (d?.amount != null) {
-      const a = Number(d.amount) || 0;
-      rate = qty ? a / qty : a;
-    }
-    return qty * rate;
+    const qty = toNum(d?.qty ?? d?.quantity);
+    const amt = toNum(d?.amount);
+    const rate = toNum(d?.rate);
+
+    if (amt > 0) return amt;
+    if (rate > 0) return qty * rate;
+    return 0;
   };
 
   const monthsBack = 12;
@@ -116,150 +125,177 @@ const page = async () => {
   });
   const chartValues = monthKeys.map((k) => totalsMap[k] || 0);
   return (
-    <main className="flex-1 h-screen overflow-y-auto bg-black text-white pt-16 lg:pt-0">
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
-        <div className="flex flex-col gap-3">
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-300 font-semibold">
+    <main className="flex-1 min-h-screen bg-black text-white overflow-y-auto">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Header Section */}
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">
             Invoice Generator
           </p>
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div className="space-y-2">
-              <h1 className="text-3xl lg:text-4xl font-semibold text-white">
-                Command Center
-              </h1>
-              <p className="text-slate-400 max-w-2xl">
-                A clear snapshot of everything billing: quick links, live metrics, and the latest movements across invoices, quotations, and deliveries.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 bg-white/80 shadow-sm rounded-2xl px-4 py-3 border border-slate-200">
-              <div className="h-10 w-10 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center font-semibold">
-                •
-              </div>
-              <div>
-                <p className="text-sm text-slate-400">Next action</p>
-                <p className="text-sm font-semibold text-black">Finalize pending invoices today</p>
-              </div>
-            </div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-slate-100 tracking-tight">
+            ERP Billing & Accounts Receivable <span className="text-slate-500 font-medium text-xl lg:text-2xl ml-1">Module</span>
+          </h1>
+        </div>
+
+        {/* Command Center Bar */}
+        <div className="bg-[#ea580c] rounded-t-2xl px-6 py-4 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <button className="p-1 hover:bg-black/10 rounded-lg transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <h2 className="text-lg font-bold text-white tracking-wide">Command Center</h2>
+          </div>
+          <div className="bg-black/20 px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white">Live Data</span>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {stats.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="group card-custom border card-border rounded-2xl px-5 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] hover:-translate-y-[2px] transition duration-200 flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-600">{item.label}</p>
-                <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent)]/10 rounded-full px-3 py-1">
-                  View
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-semibold text-slate-900">{item.value}</p>
-                <p className="text-xs text-slate-600">{item.hint}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Monthly Bill Totals</h2>
-              <span className="text-sm font-semibold text-slate-400">Last 12 months</span>
-            </div>
-
-            <div className="card-custom border card-border rounded-2xl p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-              <div className="w-full overflow-x-auto">
-                {/* Server-rendered SVG chart */}
-                {(() => {
-                  const maxVal = Math.max(...chartValues, 1);
-                  const barW = 40;
-                  const gap = 12;
-                  const svgW = chartValues.length * (barW + gap) + 40;
-                  const svgH = 220;
-                  const chartH = svgH - 40;
-                  return (
-                    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-56">
-                      <defs>
-                        <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#fb923c" />
-                          <stop offset="100%" stopColor="#f97316" />
-                        </linearGradient>
-                      </defs>
-                      <style>{`
-                        .bar text.value { opacity: 0; }
-                        .bar .tooltip { opacity: 0; pointer-events: none; transition: opacity 0.12s ease, transform 0.12s ease; }
-                        .bar:hover .tooltip { opacity: 1; pointer-events: auto; }
-                        text.label { fill: #000; }
-                        text.value { fill: #000; font-weight: 600; }
-                      `}</style>
-                      {/* bars */}
-                      {chartValues.map((v, i) => {
-                        const x = 20 + i * (barW + gap);
-                        const h = (v / maxVal) * chartH;
-                        const y = svgH - 30 - h;
-                        return (
-                          <g key={i} className="bar">
-                            <rect x={x} y={y} width={barW} height={h} rx={6} fill="url(#grad)" opacity={0.95} />
-
-                            {/* tooltip: hidden by default, shown on hover of parent .bar */}
-                            {/* position tooltip at the center of the bar (horizontal center, vertical middle) */}
-                            <g className="tooltip" transform={`translate(${x + barW / 2}, ${y + h / 2})`}>
-                              {/* subtle drop shadow */}
-                              <filter id={`f${i}`} x="-50%" y="-50%" width="200%" height="200%">
-                                <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.12" />
-                              </filter>
-                              <g filter={`url(#f${i})`}>
-                                <rect x={-52} y={-20} width={107} height={36} rx={8} fill="#ffffff" stroke="#e5e7eb" />
-                              </g>
-                              <circle cx={-30} cy={0} r={6} fill="#16a34a" stroke="#0f766e" strokeWidth={0.5} />
-                              <text x={-16} y={4} fontSize={12} fill="#000" fontWeight={600} textAnchor="start">{v ? v.toFixed(2) : "0.00"}</text>
-                            </g>
-
-                            <text className="value" x={x + barW / 2} y={y - 6} fontSize={11} textAnchor="middle">{v ? v.toFixed(0) : ""}</text>
-                            <text className="label" x={x + barW / 2} y={svgH - 10} fontSize={12} textAnchor="middle">{chartLabels[i]}</text>
-                          </g>
-                        );
-                      })}
-                      {/* y-axis baseline */}
-                      <line x1={10} y1={svgH - 30} x2={svgW - 10} y2={svgH - 30} stroke="#374151" strokeWidth={1} />
-                    </svg>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Recent activity</h2>
-              <span className="text-xs font-semibold text-slate-400">Updated live</span>
-            </div>
-            <div className="card-custom border card-border rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.05)] divide-y divide-slate-100">
-              {timeline.map((item) => (
-                <div key={item.title} className="flex items-start gap-3 px-5 py-4">
-                  <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)]"></span>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                    <p className="text-xs text-slate-600 mt-1">{item.meta}</p>
-                  </div>
-                  <span className="text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 rounded-full px-3 py-1">
-                    {item.status}
+        {/* Main Content Area */}
+        <div className="bg-[#0a0a0a]/50 border-x border-b border-white/5 rounded-b-2xl p-6 lg:p-8 space-y-10 shadow-2xl">
+          {/* Stats Grid */}
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="group card-custom rounded-2xl p-6 ring-1 ring-white/10 hover:ring-orange-500/50 hover:bg-[#1e293b] transition-all duration-300 flex flex-col gap-4 shadow-xl"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{item.label}</p>
+                  <span className="text-[10px] font-bold text-orange-500 uppercase tracking-tighter bg-orange-500/10 rounded-md px-2 py-1 group-hover:bg-orange-500 group-hover:text-white transition-colors duration-300">
+                    View
                   </span>
                 </div>
-              ))}
+                <div className="flex items-baseline gap-3">
+                  <p className="text-4xl font-bold text-white tracking-tighter transition-all duration-300 group-hover:scale-105 origin-left">{item.value}</p>
+                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">{item.hint}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-3">
+            {/* Chart Section */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest">Monthly Bill Totals</h3>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Last 12 months</span>
+              </div>
+
+              <div className="card-custom rounded-2xl p-6 ring-1 ring-white/10 shadow-inner overflow-hidden">
+                <div className="w-full">
+                  {(() => {
+                    const maxVal = Math.max(...chartValues, 1);
+                    const barW = 32;
+                    const gap = 16;
+                    const svgW = chartValues.length * (barW + gap) + 40;
+                    const svgH = 220;
+                    const chartH = svgH - 60;
+                    return (
+                        <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-64">
+                        <defs>
+                          <linearGradient id="barGrad" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#f97316" />
+                            <stop offset="100%" stopColor="#ea580c" />
+                          </linearGradient>
+                          <filter id="shadow-tooltip">
+                            <feDropShadow dx="0" dy="8" stdDeviation="12" floodColor="#000" floodOpacity="0.4" />
+                          </filter>
+                        </defs>
+                        <style>{`
+                          .bar-group .label { fill: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+                          .bar-group:hover .bar-rect { fill: #fb923c; }
+                          .bar-group .tooltip { opacity: 0; pointer-events: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); filter: url(#shadow-tooltip); }
+                          .bar-group:hover .tooltip { opacity: 1; }
+                          .bar-group:hover .tooltip-content { transform: translateY(-8px); }
+                          .tooltip-content { transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+                          .grid-line { stroke: #1e293b; stroke-width: 1; stroke-dasharray: 4 4; }
+                        `}</style>
+                        
+                        {/* Grid lines */}
+                        {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+                          <line key={i} x1={0} y1={svgH - 40 - p * chartH} x2={svgW} y2={svgH - 40 - p * chartH} className="grid-line" />
+                        ))}
+
+                        {/* First pass: Render all bars */}
+                        {chartValues.map((v, i) => {
+                          const x = 20 + i * (barW + gap);
+                          const h = (v / maxVal) * chartH;
+                          const y = svgH - 40 - h;
+                          return (
+                            <rect key={`bar-${i}`} x={x} y={y} width={barW} height={h} rx={4} fill="url(#barGrad)" className="transition-all duration-300" />
+                          );
+                        })}
+
+                        {/* Second pass: Render hover zones and tooltips on top */}
+                        {chartValues.map((v, i) => {
+                          const x = 20 + i * (barW + gap);
+                          const h = (v / maxVal) * chartH;
+                          const y = svgH - 40 - h;
+                          return (
+                            <g key={`hover-${i}`} className="bar-group">
+                              {/* Invisible trigger area */}
+                              <rect x={x - 4} y={0} width={barW + 8} height={svgH - 40} fill="transparent" cursor="pointer" />
+                              
+                              <rect x={x} y={y} width={barW} height={h} rx={4} fill="transparent" className="bar-rect transition-colors duration-200" />
+                              
+                              <text className="label" x={x + barW / 2} y={svgH - 15} textAnchor="middle">{chartLabels[i]}</text>
+                              
+                              {/* Tooltip with fixed coordinate transform */}
+                              <g className="tooltip" transform={`translate(${x + barW / 2}, ${y + h / 2})`}>
+                                <g className="tooltip-content">
+                                  <rect x={-45} y={-14} width={90} height={28} rx={8} fill="#1e293b" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+                                  <text x={0} y={5} fontSize={11} fill="#ffffff" fontWeight={800} textAnchor="middle">
+                                    {v ? `Rs. ${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "0"}
+                                  </text>
+                                </g>
+                              </g>
+                            </g>
+                          );
+                        })}
+                        <line x1={0} y1={svgH - 40} x2={svgW} y2={svgH - 40} stroke="#475569" strokeWidth={1} />
+                      </svg>
+                    );
+                  })()}
+                </div>
+              </div>
             </div>
 
-            <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xl">
-              <p className="text-sm uppercase tracking-[0.18em] text-white/60 font-semibold">
-                Snapshot
-              </p>
-              <p className="text-lg font-semibold mt-3">On-time delivery rate</p>
-              <p className="text-3xl font-semibold mt-1">96.4%</p>
-              <p className="text-sm text-white/70 mt-2">Trending steady week over week. Keep challans synced to avoid surprises.</p>
+            {/* Sidebar Section */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest">Recent activity</h3>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Live</span>
+              </div>
+              
+              <div className="card-custom rounded-2xl shadow-xl ring-1 ring-white/10 divide-y divide-white/5">
+                {timeline.map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-4 px-6 py-5 group hover:bg-[#1e293b] transition-colors">
+                    <div className="mt-1.5 h-2 w-2 rounded-full bg-orange-500 shadow-[0_0_8px_#f97316]"></div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-xs font-bold text-slate-200 group-hover:text-white transition-colors">{item.title}</p>
+                      <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">{item.meta}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Status Card */}
+              <div className="bg-gradient-to-br from-[#ea580c] to-[#9a3412] text-white rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:scale-150 transition-transform duration-700"></div>
+                <p className="text-[10px] uppercase tracking-[0.25em] text-white/70 font-bold">Snapshot</p>
+                <div className="mt-4 space-y-1">
+                  <p className="text-sm font-bold text-white/90 uppercase tracking-tight">On-time delivery</p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-4xl font-black tracking-tighter transition-all group-hover:translate-x-1">96.4%</p>
+                    <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                  </div>
+                  <p className="text-[10px] text-white/60 font-medium leading-relaxed mt-2 uppercase tracking-wide">
+                    Trending steady. Keep challans synced.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
