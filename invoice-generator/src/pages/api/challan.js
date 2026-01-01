@@ -5,7 +5,8 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { challan, limit, exact } = req.query
+      const { challan, limit, exact, industry, date, from, to, item } = req.query
+      const lim = Number(limit) || 50
 
       // If challan query provided, perform a prefix search on challanno
       if (challan && typeof challan === 'string') {
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
               .from('DeliveryChallan')
               .select('*')
               .eq('challanno', parsed)
-              .order('created_at', { ascending: false })
+              .order('challanno', { ascending: false })
               .limit(lim)
 
             if (error) return res.status(500).json({ error: error.message })
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
           const { data, error } = await supabase
             .from('DeliveryChallan')
             .select('*')
-            .order('created_at', { ascending: false })
+            .order('challanno', { ascending: false })
             .limit(500)
 
           if (error) return res.status(500).json({ error: error.message })
@@ -48,13 +49,69 @@ export default async function handler(req, res) {
         }
       }
 
-      // Default: return all (existing behavior)
-      const { data, error } = await supabase
+      // Default: return with optional filters
+      let query = supabase
         .from('DeliveryChallan')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('challanno', { ascending: false })
+        .limit(lim)
+
+      if (industry && typeof industry === 'string') {
+        query = query.eq('Industry', industry)
+      }
+
+      if (date && typeof date === 'string') {
+        // Some rows store human date in `Date` column; match exactly if provided
+        query = query.eq('Date', date)
+      }
+
+      if (from && typeof from === 'string') {
+        const d = new Date(from)
+        if (!Number.isNaN(d.getTime())) {
+          const fromIso = d.toISOString()
+          query = query.gte('created_at', fromIso)
+        }
+      }
+
+      if (to && typeof to === 'string') {
+        const dt = new Date(to)
+        if (!Number.isNaN(dt.getTime())) {
+          dt.setHours(23, 59, 59, 999)
+          query = query.lte('created_at', dt.toISOString())
+        }
+      }
+
+      const { data, error } = await query
 
       if (error) return res.status(500).json({ error: error.message })
+
+      // If challan prefix provided without exact flag, perform client-side prefix filter
+      if (challan && typeof challan === 'string' && !(String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true')) {
+        const parsed = Number(challan.replace(/\D/g, ''))
+        if (!Number.isNaN(parsed)) {
+          const lim = Number(limit) || 50
+          const prefix = String(parsed)
+          const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
+          return res.status(200).json(filtered)
+        }
+      }
+
+      // Item name filter: matches any Description entry's text fields containing the query
+      if (item && typeof item === 'string') {
+        const q = item.trim().toLowerCase()
+        const lim = Number(limit) || 50
+        const filtered = (data || []).filter(row => {
+          const desc = row?.Description
+          const arr = Array.isArray(desc) ? desc : desc ? [desc] : []
+          for (const d of arr) {
+            const fields = [d?.description, d?.materialDescription, d?.desc]
+            if (fields.some(f => typeof f === 'string' && f.toLowerCase().includes(q))) return true
+          }
+          return false
+        }).slice(0, lim)
+        return res.status(200).json(filtered)
+      }
+
       return res.status(200).json(data)
     }
 

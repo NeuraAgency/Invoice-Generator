@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import DatePicker from "@/app/components/DatePicker";
 import JSZip from "jszip";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Nav from "@/app/components/nav";
@@ -19,7 +20,12 @@ type InvoiceRow = {
 
 const InvoiceInqueryPage = () => {
 	const [billQuery, setBillQuery] = useState("");
+	const [dateFrom, setDateFrom] = useState<Date | null>(null);
+	const [dateTo, setDateTo] = useState<Date | null>(null);
+	const [showFilterModal, setShowFilterModal] = useState(false);
+	const [tempFilters, setTempFilters] = useState<{ bill: string; challan: string; item: string; from: Date | null; to: Date | null }>({ bill: "", challan: "", item: "", from: null, to: null });
 	const [challanQuery, setChallanQuery] = useState("");
+	const [itemQuery, setItemQuery] = useState("");
 	const [results, setResults] = useState<InvoiceRow[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -27,15 +33,32 @@ const InvoiceInqueryPage = () => {
 	const [showPrintModal, setShowPrintModal] = useState(false);
 	const [selectionRange, setSelectionRange] = useState({ from: "", to: "" });
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
-	const [newDate, setNewDate] = useState("");
+	const [newDateDt, setNewDateDt] = useState<Date | null>(null);
 
 	const qs = useMemo(() => {
 		const params = new URLSearchParams();
 		if (billQuery.trim()) params.set("bill", billQuery.trim());
 		if (challanQuery.trim()) params.set("challan", challanQuery.trim());
+		if (itemQuery.trim()) params.set("item", itemQuery.trim());
+		const fmt = (d: Date) => d.toISOString().split("T")[0];
+		if (dateFrom) params.set("from", fmt(dateFrom));
+		if (dateTo) params.set("to", fmt(dateTo));
 		params.set("limit", "50");
 		return params.toString();
-	}, [billQuery, challanQuery]);
+	}, [billQuery, challanQuery, itemQuery, dateFrom, dateTo]);
+
+	const openFilterModal = () => {
+		setTempFilters({ bill: billQuery, challan: challanQuery, item: itemQuery, from: dateFrom, to: dateTo });
+		setShowFilterModal(true);
+	};
+	const applyFilters = () => {
+		setBillQuery(tempFilters.bill);
+		setChallanQuery(tempFilters.challan);
+		setItemQuery(tempFilters.item);
+		setDateFrom(tempFilters.from);
+		setDateTo(tempFilters.to);
+		setShowFilterModal(false);
+	};
 
 	useEffect(() => {
 		const controller = new AbortController();
@@ -410,23 +433,24 @@ const InvoiceInqueryPage = () => {
 
 	const handleUpdateDates = async () => {
 		if (selectedBillIds.size === 0) return alert("Please select at least one bill to update");
-		if (!newDate) return alert("Please choose a date");
+		if (!newDateDt) return alert("Please choose a date");
 		const billnos = Array.from(selectedBillIds);
 		try {
+			const newDateStr = newDateDt.toISOString().split('T')[0];
 			const res = await fetch('/api/invoice-date', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ billnos, date: newDate }),
+				body: JSON.stringify({ billnos, date: newDateStr }),
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = await res.json();
 			// Update local UI with returned updated rows if available
 			if (Array.isArray(data)) {
 				const updatedSet = new Set(data.map((r: any) => String(r.billno)));
-				setResults((prev) => prev.map((r) => (updatedSet.has(String(r.billno)) ? { ...r, created_at: data.find((x: any) => String(x.billno) === String(r.billno))?.created_at || newDate } : r)));
+				setResults((prev) => prev.map((r) => (updatedSet.has(String(r.billno)) ? { ...r, created_at: data.find((x: any) => String(x.billno) === String(r.billno))?.created_at || newDateStr } : r)));
 			} else {
 				// Fallback: map selected IDs to new date string
-				setResults((prev) => prev.map((r) => (selectedBillIds.has(String(r.billno)) ? { ...r, created_at: new Date(newDate).toISOString() } : r)));
+				setResults((prev) => prev.map((r) => (selectedBillIds.has(String(r.billno)) ? { ...r, created_at: new Date(newDateStr).toISOString() } : r)));
 			}
 			alert('Updated dates for selected bills');
 			setShowPrintModal(false);
@@ -564,6 +588,7 @@ const InvoiceInqueryPage = () => {
 					</div>
 					<h1 className="text-base lg:text-lg font-semibold mb-3">Invoice Inquiry</h1>
 					<div className="flex flex-wrap items-end gap-4">
+												<button onClick={openFilterModal} className="bg-[var(--accent)] text-black px-4 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg">Filters</button>
 						<div>
 							<label className="block text-[11px] font-medium text-white">Bill Number</label>
 							<input type="text" value={billQuery} onChange={(e) => setBillQuery(e.target.value)} className="mt-1 w-40 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 12 or 00012" />
@@ -571,6 +596,10 @@ const InvoiceInqueryPage = () => {
 						<div className="flex flex-col">
 							<label className="block text-[11px] font-medium text-white">Challan Number</label>
 							<input type="text" value={challanQuery} onChange={(e) => setChallanQuery(e.target.value)} className="mt-1 w-40 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 34 or 00034" />
+						</div>
+						<div className="flex flex-col">
+							<label className="block text-[11px] font-medium text-white">Item Name</label>
+							<input type="text" value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} className="mt-1 w-64 text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="Smart search: words and typos OK" />
 						</div>
 						<button onClick={() => setShowPrintModal(true)} className="bg-[var(--accent)] text-black px-4 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2">
 							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -650,10 +679,7 @@ const InvoiceInqueryPage = () => {
 							</div>
 
 							<div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
-								<div className="space-y-2">
-									<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">New Date</label>
-									<input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" />
-								</div>
+								<DatePicker label="New Date" value={newDateDt} onChange={setNewDateDt} className="w-full" />
 								<div className="col-span-2 flex items-center gap-3">
 									<button onClick={handleUpdateDates} className="bg-[var(--accent)] text-black px-6 py-2.5 rounded-lg text-xs font-bold hover:opacity-90 transition active:scale-95">Update Dates</button>
 									<div className="text-xs text-white/60">This will update the created date for all selected invoices.</div>
@@ -723,6 +749,39 @@ const InvoiceInqueryPage = () => {
 					</div>
 				</div>
 			)}
+
+					{showFilterModal && (
+						<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+							<div className="w-full max-w-3xl bg-[#1e1e1e] border border-[var(--accent)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+								<div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/40">
+									<h2 className="text-lg font-bold text-white">Filters</h2>
+									<button onClick={() => setShowFilterModal(false)} className="text-white/60 hover:text-white">✕</button>
+								</div>
+								<div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label className="block text-[11px] font-medium text-white">Bill Number</label>
+										<input type="text" value={tempFilters.bill} onChange={(e) => setTempFilters(f => ({ ...f, bill: e.target.value }))} className="mt-1 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 12 or 00012" />
+									</div>
+									<div>
+										<label className="block text-[11px] font-medium text-white">Challan Number</label>
+										<input type="text" value={tempFilters.challan} onChange={(e) => setTempFilters(f => ({ ...f, challan: e.target.value }))} className="mt-1 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 34 or 00034" />
+									</div>
+									<div className="md:col-span-2">
+										<label className="block text-[11px] font-medium text-white">Item Name</label>
+										<input type="text" value={tempFilters.item} onChange={(e) => setTempFilters(f => ({ ...f, item: e.target.value }))} className="mt-1 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="Smart search: words and typos OK" />
+									</div>
+									<div className="grid grid-cols-2 gap-3 md:col-span-2">
+										<DatePicker label="From" value={tempFilters.from} onChange={(d) => setTempFilters(f => ({ ...f, from: d }))} />
+										<DatePicker label="To" value={tempFilters.to} onChange={(d) => setTempFilters(f => ({ ...f, to: d }))} />
+									</div>
+								</div>
+								<div className="p-4 border-t border-white/10 flex justify-end gap-3 bg-black/40">
+									<button onClick={() => setShowFilterModal(false)} className="px-5 py-2 rounded-lg text-xs font-bold text-white/70 hover:text-white transition">Cancel</button>
+									<button onClick={applyFilters} className="bg-[var(--accent)] text-black px-6 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition">Apply Filters</button>
+								</div>
+							</div>
+						</div>
+					)}
 		</div>
 	);
 };

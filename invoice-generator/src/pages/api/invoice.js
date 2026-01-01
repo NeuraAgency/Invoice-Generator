@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { bill, challan, limit } = req.query
+      const { bill, challan, limit, item, from, to, industry } = req.query
       const lim = Number(limit) || 50
 
       // Try to include DeliveryChallan info so we can see the Industry/Company.
@@ -30,9 +30,80 @@ export default async function handler(req, res) {
           }
         }
 
+        // Date range filters on created_at
+        if (from && typeof from === 'string') {
+          const fromIso = new Date(from).toISOString()
+          query = query.gte('created_at', fromIso)
+        }
+        if (to && typeof to === 'string') {
+          const dt = new Date(to)
+          dt.setHours(23, 59, 59, 999)
+          query = query.lte('created_at', dt.toISOString())
+        }
+
         const { data, error } = await query.order('billno', { ascending: false }).limit(lim)
         if (error) throw error
-        return res.status(200).json(data)
+        // In-memory filters: industry and item smart match
+        let resultData = Array.isArray(data) ? data : []
+        if (industry && typeof industry === 'string') {
+          const inorm = String(industry).trim().toLowerCase()
+          resultData = resultData.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+        }
+        // Smart item filter on Description (token + fuzzy)
+        if (item && typeof item === 'string') {
+          const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+          const tokenize = (s) => normalize(s).split(/[^a-z0-9]+/).filter(Boolean)
+          const levenshtein = (a, b) => {
+            a = normalize(a); b = normalize(b);
+            const m = a.length, n = b.length;
+            if (!m) return n; if (!n) return m;
+            const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+            for (let i = 0; i <= m; i++) dp[i][0] = i;
+            for (let j = 0; j <= n; j++) dp[0][j] = j;
+            for (let i = 1; i <= m; i++) {
+              for (let j = 1; j <= n; j++) {
+                const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                dp[i][j] = Math.min(
+                  dp[i - 1][j] + 1,
+                  dp[i][j - 1] + 1,
+                  dp[i - 1][j - 1] + cost
+                );
+              }
+            }
+            return dp[m][n];
+          };
+          const smartMatch = (query, text) => {
+            const qTokens = tokenize(query);
+            const tTokens = tokenize(text);
+            if (!qTokens.length) return true;
+            const allPresent = qTokens.every(qt => tTokens.some(tt => tt.includes(qt)));
+            if (allPresent) return true;
+            let matched = 0;
+            for (const qt of qTokens) {
+              let best = Infinity;
+              for (const tt of tTokens) {
+                const d = levenshtein(qt, tt);
+                best = Math.min(best, d);
+                if (best === 0) break;
+              }
+              const ok = best <= 2 || best <= Math.ceil(qt.length * 0.2);
+              if (ok) matched++;
+            }
+            return matched >= Math.ceil(qTokens.length * 0.7);
+          };
+
+          const filtered = (resultData || []).filter(row => {
+            const desc = row?.Description
+            const arr = Array.isArray(desc) ? desc : desc ? [desc] : []
+            for (const d of arr) {
+              const combined = [d?.description, d?.materialDescription].filter(Boolean).join(' ')
+              if (smartMatch(item, combined)) return true
+            }
+            return false
+          })
+          return res.status(200).json(filtered)
+        }
+        return res.status(200).json(resultData)
       } catch (e) {
         console.error('/api/invoice primary query error:', e)
         // fallback: try a simpler query without the join/relationship
@@ -50,12 +121,81 @@ export default async function handler(req, res) {
               fallback = fallback.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
             }
           }
+          // Date range filters in fallback
+          if (from && typeof from === 'string') {
+            const fromIso = new Date(from).toISOString()
+            fallback = fallback.gte('created_at', fromIso)
+          }
+          if (to && typeof to === 'string') {
+            const dt = new Date(to)
+            dt.setHours(23, 59, 59, 999)
+            fallback = fallback.lte('created_at', dt.toISOString())
+          }
+
           const { data: fd, error: ferr } = await fallback.order('billno', { ascending: false }).limit(lim)
           if (ferr) {
             console.error('/api/invoice fallback query error:', ferr)
             return res.status(500).json({ error: String(ferr.message || ferr) })
           }
-          return res.status(200).json(fd)
+          let resultFd = Array.isArray(fd) ? fd : []
+          if (industry && typeof industry === 'string') {
+            const inorm = String(industry).trim().toLowerCase()
+            resultFd = resultFd.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+          }
+          if (item && typeof item === 'string') {
+            const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+            const tokenize = (s) => normalize(s).split(/[^a-z0-9]+/).filter(Boolean)
+            const levenshtein = (a, b) => {
+              a = normalize(a); b = normalize(b);
+              const m = a.length, n = b.length;
+              if (!m) return n; if (!n) return m;
+              const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+              for (let i = 0; i <= m; i++) dp[i][0] = i;
+              for (let j = 0; j <= n; j++) dp[0][j] = j;
+              for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                  const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                  dp[i][j] = Math.min(
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
+                  );
+                }
+              }
+              return dp[m][n];
+            };
+            const smartMatch = (query, text) => {
+              const qTokens = tokenize(query);
+              const tTokens = tokenize(text);
+              if (!qTokens.length) return true;
+              const allPresent = qTokens.every(qt => tTokens.some(tt => tt.includes(qt)));
+              if (allPresent) return true;
+              let matched = 0;
+              for (const qt of qTokens) {
+                let best = Infinity;
+                for (const tt of tTokens) {
+                  const d = levenshtein(qt, tt);
+                  best = Math.min(best, d);
+                  if (best === 0) break;
+                }
+                const ok = best <= 2 || best <= Math.ceil(qt.length * 0.2);
+                if (ok) matched++;
+              }
+              return matched >= Math.ceil(qTokens.length * 0.7);
+            };
+
+            const filtered = (resultFd || []).filter(row => {
+              const desc = row?.Description
+              const arr = Array.isArray(desc) ? desc : desc ? [desc] : []
+              for (const d of arr) {
+                const combined = [d?.description, d?.materialDescription].filter(Boolean).join(' ')
+                if (smartMatch(item, combined)) return true
+              }
+              return false
+            })
+            return res.status(200).json(filtered)
+          }
+          return res.status(200).json(resultFd)
         } catch (err) {
           console.error('/api/invoice fallback exception:', err)
           return res.status(500).json({ error: String(err?.message || err) })
