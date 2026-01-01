@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import JSZip from "jszip";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Nav from "@/app/components/nav";
 
@@ -26,6 +27,7 @@ const InvoiceInqueryPage = () => {
 	const [showPrintModal, setShowPrintModal] = useState(false);
 	const [selectionRange, setSelectionRange] = useState({ from: "", to: "" });
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
+	const [newDate, setNewDate] = useState("");
 
 	const qs = useMemo(() => {
 		const params = new URLSearchParams();
@@ -406,6 +408,34 @@ const InvoiceInqueryPage = () => {
 		}
 	};
 
+	const handleUpdateDates = async () => {
+		if (selectedBillIds.size === 0) return alert("Please select at least one bill to update");
+		if (!newDate) return alert("Please choose a date");
+		const billnos = Array.from(selectedBillIds);
+		try {
+			const res = await fetch('/api/invoice-date', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ billnos, date: newDate }),
+			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			// Update local UI with returned updated rows if available
+			if (Array.isArray(data)) {
+				const updatedSet = new Set(data.map((r: any) => String(r.billno)));
+				setResults((prev) => prev.map((r) => (updatedSet.has(String(r.billno)) ? { ...r, created_at: data.find((x: any) => String(x.billno) === String(r.billno))?.created_at || newDate } : r)));
+			} else {
+				// Fallback: map selected IDs to new date string
+				setResults((prev) => prev.map((r) => (selectedBillIds.has(String(r.billno)) ? { ...r, created_at: new Date(newDate).toISOString() } : r)));
+			}
+			alert('Updated dates for selected bills');
+			setShowPrintModal(false);
+		} catch (e: any) {
+			console.error('Failed to update invoice dates:', e);
+			alert('Failed to update invoice dates');
+		}
+	};
+
 	const handleReprint = async (row: InvoiceRow) => {
 		try {
 			const rows = toRowData(row.Description);
@@ -439,6 +469,64 @@ const InvoiceInqueryPage = () => {
 		} catch (e) {
 			console.error("Invoice reprint failed:", e);
 			alert("Failed to generate invoice PDF for reprint.");
+		}
+	};
+
+	const handleDownloadSelectedInvoices = async () => {
+		const toDownload = results.filter((r) => selectedBillIds.has(String(r.billno)));
+		if (toDownload.length === 0) return alert("Please select at least one bill");
+		try {
+			// Sort by bill number numeric part
+			const sorted = [...toDownload].sort((a, b) => {
+				const getNum = (s: any) => {
+					const n = String(s).match(/\d+$/);
+					return n ? parseInt(n[0]) : 0;
+				};
+				return getNum(a.billno) - getNum(b.billno);
+			});
+
+			// Create ZIP containing individual PDFs named by billno
+			const zip = new JSZip();
+			for (const row of sorted) {
+				const rows = toRowData(row.Description);
+				let gp: string | undefined = undefined;
+				if (row.challanno != null) {
+					try {
+						const ch = encodeURIComponent(String(row.challanno));
+						const res = await fetch(`/api/challan?challan=${ch}&limit=1&exact=1`);
+						if (res.ok) {
+							const data = await res.json();
+							if (Array.isArray(data) && data.length > 0) {
+								gp = data[0]?.GP ?? data[0]?.gp ?? undefined;
+							}
+						}
+					} catch {}
+				}
+				const bytes = await generateInvoicePdfBytes(rows, {
+					bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
+					challan: row.challanno ? String(row.challanno).padStart(5, "0") : undefined,
+					gp,
+				});
+				const billStr = String(row.billno).includes('-') ? String(row.billno) : String(row.billno).padStart(5, "0");
+				zip.file(`${billStr}.pdf`, bytes);
+			}
+
+			const zipBlob = await zip.generateAsync({ type: 'blob' });
+			const url = URL.createObjectURL(zipBlob);
+			const dateStr = new Date().toISOString().split('T')[0];
+			const firstBill = String(sorted[0].billno).includes('-') ? String(sorted[0].billno) : String(sorted[0].billno).padStart(5, "0");
+			const lastBill = String(sorted[sorted.length - 1].billno).includes('-') ? String(sorted[sorted.length - 1].billno) : String(sorted[sorted.length - 1].billno).padStart(5, "0");
+			const fileName = `${dateStr}_Invoices_${firstBill}_to_${lastBill}.zip`;
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			setTimeout(() => URL.revokeObjectURL(url), 60000);
+		} catch (e) {
+			console.error("Failed to download selected invoices:", e);
+			alert("Failed to generate ZIP of selected invoices.");
 		}
 	};
 
@@ -560,6 +648,17 @@ const InvoiceInqueryPage = () => {
 								</div>
 								<button onClick={applyRange} className="bg-[var(--accent)] text-black px-6 py-2.5 rounded-lg text-xs font-bold hover:opacity-90 transition active:scale-95">Apply Range</button>
 							</div>
+
+							<div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
+								<div className="space-y-2">
+									<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">New Date</label>
+									<input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" />
+								</div>
+								<div className="col-span-2 flex items-center gap-3">
+									<button onClick={handleUpdateDates} className="bg-[var(--accent)] text-black px-6 py-2.5 rounded-lg text-xs font-bold hover:opacity-90 transition active:scale-95">Update Dates</button>
+									<div className="text-xs text-white/60">This will update the created date for all selected invoices.</div>
+								</div>
+							</div>
 							<div className="rounded-xl border border-white/10 overflow-hidden">
 								<table className="w-full text-left text-xs">
 									<thead className="bg-[var(--accent)] text-black font-bold">
@@ -614,6 +713,10 @@ const InvoiceInqueryPage = () => {
 								<button onClick={handlePrintSelected} className="bg-[var(--accent)] text-black px-8 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2">
 									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
 									Print Bill List
+								</button>
+								<button onClick={handleDownloadSelectedInvoices} className="bg-white text-black px-8 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2 border border-[var(--accent)]">
+									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" /></svg>
+									Download Selected (ZIP)
 								</button>
 							</div>
 						</div>

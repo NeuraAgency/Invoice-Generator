@@ -23,6 +23,7 @@
     "next": "15.5.7",
     "node-tesseract-ocr": "^2.2.1",
     "pdf-lib": "^1.17.1",
+    "jszip": "^3.10.1",
     "pdfjs-dist": "^3.11.174",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
