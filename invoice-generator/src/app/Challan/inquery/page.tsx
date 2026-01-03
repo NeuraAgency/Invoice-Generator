@@ -1,5 +1,6 @@
   "use client";
   import React, { useEffect, useMemo, useState } from "react";
+  import Link from "next/link";
   import DatePicker from "@/app/components/DatePicker";
   import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
   import Nav from "@/app/components/nav";
@@ -12,6 +13,7 @@
     PO?: string | null;
     GP?: string | null;
     Description: unknown;
+    Sample_returned?: boolean | null;
   };
 
   const ChallanInquiryPage = () => {
@@ -127,7 +129,10 @@
       }));
     };
 
-    const generatePdfBytes = async (rows: { qty: string; description: string; indno: string }[], options: { gp?: string; po?: string | null; challan?: string | null }) => {
+    const generatePdfBytes = async (
+      rows: { qty: string; description: string; indno: string }[],
+      options: { gp?: string; po?: string | null; challan?: string | null; sampleReturned?: boolean }
+    ) => {
       const pdfDoc = await PDFDocument.create();
       const page = pdfDoc.addPage([595.28, 841.89]);
       const { width, height } = page.getSize();
@@ -211,10 +216,16 @@
       const maxDescriptionCharsPerLine = 60;
       for (let i = 0; i < Math.min(rows.length, totalRows); i++) {
         const r = rows[i];
+        const isLastActualRow = i === rows.length - 1;
+        const note = "Note: Sample have been returned";
+        const descriptionText =
+          isLastActualRow && options.sampleReturned
+            ? (r.description ? `${r.description} | ${note}` : note)
+            : r.description;
         drawText(r.qty, tableLeft + 10, cursorY, 11);
         const descLines: string[] = [];
-        for (let start = 0; start < r.description.length; start += maxDescriptionCharsPerLine) {
-          descLines.push(r.description.slice(start, start + maxDescriptionCharsPerLine));
+        for (let start = 0; start < descriptionText.length; start += maxDescriptionCharsPerLine) {
+          descLines.push(descriptionText.slice(start, start + maxDescriptionCharsPerLine));
         }
         for (let li = 0; li < Math.min(2, descLines.length); li++) {
           const line = descLines[li];
@@ -243,7 +254,12 @@
     const handleReprint = async (row: ChallanRow) => {
       try {
         const rows = toRowData(row.Description);
-        const bytes = await generatePdfBytes(rows, { gp: row.GP ?? undefined, po: row.PO ?? null, challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null });
+        const bytes = await generatePdfBytes(rows, {
+          gp: row.GP ?? undefined,
+          po: row.PO ?? null,
+          challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null,
+          sampleReturned: Boolean(row.Sample_returned),
+        });
         const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const win = window.open(url, "_blank");
@@ -257,7 +273,12 @@
     const handleRedownload = async (row: ChallanRow) => {
       try {
         const rows = toRowData(row.Description);
-        const bytes = await generatePdfBytes(rows, { gp: row.GP ?? undefined, po: row.PO ?? null, challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null });
+        const bytes = await generatePdfBytes(rows, {
+          gp: row.GP ?? undefined,
+          po: row.PO ?? null,
+          challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null,
+          sampleReturned: Boolean(row.Sample_returned),
+        });
         const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -318,6 +339,17 @@
                         <div className="col-span-12 md:col-span-5 min-w-0">{renderLines(row.Description)}</div>
                         <div className="col-span-12 md:col-span-12 mt-2">
                           <div className="flex flex-wrap gap-2 items-center">
+                            <Link
+                              href={
+                                row.id != null
+                                  ? `/Challan?editId=${encodeURIComponent(String(row.id))}`
+                                  : `/Challan?editChallan=${encodeURIComponent(String(row.challanno ?? ""))}`
+                              }
+                              className="px-3 py-1 text-xs bg-white/10 text-white rounded-md hover:bg-white/20"
+                              title={row.id != null ? "Edit this challan" : "Edit this challan (by challan number)"}
+                            >
+                              Edit
+                            </Link>
                             <button onClick={() => handleReprint(row)} className="px-3 py-1 text-xs bg-[var(--accent)] text-white rounded-md hover:opacity-90" title="Open challan PDF for printing">Reprint</button>
                             <button onClick={() => handleRedownload(row)} className="px-3 py-1 text-xs bg-white/10 text-white rounded-md hover:bg-white/20" title="Download challan PDF">Download PDF</button>
                           </div>

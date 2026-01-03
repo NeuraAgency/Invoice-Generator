@@ -14,6 +14,15 @@ interface GenerateProps {
   setRows: React.Dispatch<React.SetStateAction<RowData[]>>;
   onConfirm: () => void;
   setGpNo: React.Dispatch<React.SetStateAction<string>>;
+  initialMeta?: {
+    challanId?: number;
+    challanno?: number | null;
+    poNo?: string | null;
+    gp?: string | null;
+    companyName?: string | null;
+    date?: string | null;
+    sampleReturned?: boolean | null;
+  };
 }
 
 // Helper to map a record (DeliveryChallan or extraction) into table rows
@@ -57,7 +66,10 @@ function mapChallanToRows(rec: any): RowData[] {
   ];
 }
 
-const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }) => {
+export { mapChallanToRows };
+
+const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, initialMeta }) => {
+  const isEdit = Boolean(initialMeta?.challanId != null || initialMeta?.challanno != null);
   // GatePass search state
   const [gpQuery, setGpQuery] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -71,9 +83,40 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
   // NEW: manual GatePass and Company Name
   const [manualGp, setManualGp] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("Kassim Textile Mills Limited");
+  const [documentDate, setDocumentDate] = useState<string>(new Date().toISOString().split("T")[0]);
   // NEW: sample returned flag (shared with preview via localStorage)
   const [sampleReturned, setSampleReturned] = useState<boolean>(false);
   // ----- END NEW STATE -----
+
+  // If we're editing, prime the inputs from the challan record
+  useEffect(() => {
+    if (!initialMeta) return;
+
+    if (initialMeta.poNo != null) setPoNo(String(initialMeta.poNo));
+    if (initialMeta.gp != null) {
+      const val = String(initialMeta.gp);
+      setManualGp(val);
+      setGpNo(val);
+      setRows((prev) => prev.map((r) => ({ ...r, gpno: val })));
+      setGpQuery(val);
+    }
+    if (initialMeta.companyName != null) {
+      const val = String(initialMeta.companyName);
+      setCompanyName(val);
+      try {
+        localStorage.setItem('invoiceCompanyName', val);
+      } catch {}
+    }
+    if (initialMeta.date != null) setDocumentDate(String(initialMeta.date));
+
+    if (initialMeta.sampleReturned != null) {
+      const val = Boolean(initialMeta.sampleReturned);
+      setSampleReturned(val);
+      try {
+        localStorage.setItem("sampleReturned", val ? "true" : "false");
+      } catch {}
+    }
+  }, [initialMeta?.challanId]);
 
   useEffect(() => {
     if (!gpQuery) {
@@ -149,7 +192,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
     try {
       const payload = {
-        Date: new Date().toISOString().split("T")[0],
+        Date: documentDate || new Date().toISOString().split("T")[0],
         PO: poNo || "00000",
         // use manual gate pass if provided, otherwise fall back
         GP: manualGp || gpQuery || rows?.[0]?.gpno || "",
@@ -159,12 +202,24 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
           description: r.description,
           indNo: r.indno,
         })),
+        Sample_returned: sampleReturned,
       };
 
       const res = await fetch("/api/challan", {
-        method: "POST",
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(
+          isEdit
+            ? {
+                ...(initialMeta?.challanId != null
+                  ? { id: initialMeta.challanId }
+                  : initialMeta?.challanno != null
+                  ? { challanno: initialMeta.challanno }
+                  : {}),
+                ...payload,
+              }
+            : payload
+        ),
       });
 
       if (!res.ok) {
@@ -186,11 +241,14 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
 
       try {
         localStorage.setItem("latestPO", String(payload.PO ?? ""));
-        if (returnedChallan) {
-          localStorage.setItem("latestChallan", returnedChallan);
+        // For edit mode, prefer keeping the existing challan number
+        const existingChallan = initialMeta?.challanno != null ? String(initialMeta.challanno).padStart(5, "0") : null;
+        const challanToStore = existingChallan || returnedChallan;
+        if (challanToStore) {
+          localStorage.setItem("latestChallan", challanToStore);
           try {
             window.dispatchEvent(
-              new CustomEvent("latestChallanUpdated", { detail: { challan: returnedChallan } })
+              new CustomEvent("latestChallanUpdated", { detail: { challan: challanToStore } })
             );
           } catch (e) {}
         }
@@ -401,7 +459,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo }
             onClick={handleGenerate}
             disabled={generating}
           >
-            {generating ? "Generating…" : "Generate"}
+            {generating ? (isEdit ? "Updating…" : "Generating…") : (isEdit ? "Update" : "Generate")}
           </button>
         </div>
         {errorMsg && <div className="text-red-400 text-xs mt-2">{errorMsg}</div>}

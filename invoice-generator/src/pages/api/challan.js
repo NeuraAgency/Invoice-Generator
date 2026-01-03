@@ -5,8 +5,24 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { challan, limit, exact, industry, date, from, to, item } = req.query
+      const { id, challan, limit, exact, industry, date, from, to, item } = req.query
       const lim = Number(limit) || 50
+
+      // Fetch single challan by primary id (used for edit flows)
+      if (id && typeof id === 'string') {
+        const parsedId = Number(String(id).replace(/\D/g, ''))
+        if (!Number.isNaN(parsedId)) {
+          const { data, error } = await supabase
+            .from('DeliveryChallan')
+            .select('*')
+            .eq('id', parsedId)
+            .maybeSingle()
+
+          if (error) return res.status(500).json({ error: error.message })
+          if (!data) return res.status(404).json({ error: 'Not found' })
+          return res.status(200).json(data)
+        }
+      }
 
       // If challan query provided, perform a prefix search on challanno
       if (challan && typeof challan === 'string') {
@@ -115,8 +131,39 @@ export default async function handler(req, res) {
       return res.status(200).json(data)
     }
 
+    if (req.method === 'PATCH') {
+      const { id, challanno, Date, PO, GP, Industry, Description, Sample_returned } = req.body || {}
+
+      const parsedId = id != null ? Number(String(id).replace(/\D/g, '')) : null
+      const parsedChallanno = challanno != null ? Number(String(challanno).replace(/\D/g, '')) : null
+
+      if (parsedId == null && parsedChallanno == null) {
+        return res.status(400).json({ error: 'Missing id or challanno' })
+      }
+
+      let query = supabase
+        .from('DeliveryChallan')
+        .update({ Date, PO, GP, Industry, Description, Sample_returned })
+        .select('*')
+
+      if (parsedId != null && !Number.isNaN(parsedId)) {
+        query = query.eq('id', parsedId)
+      } else if (parsedChallanno != null && !Number.isNaN(parsedChallanno)) {
+        query = query.eq('challanno', parsedChallanno)
+      } else {
+        return res.status(400).json({ error: 'Invalid id or challanno' })
+      }
+
+      const { data, error } = await query.maybeSingle()
+      if (error) return res.status(500).json({ error: error.message })
+      if (!data) return res.status(404).json({ error: 'Not found' })
+
+      const challanStr = data?.challanno != null ? String(data.challanno).padStart(5, '0') : null
+      return res.status(200).json({ data, challan: challanStr })
+    }
+
     if (req.method === 'POST') {
-      const { Date, PO, GP, Industry, Description } = req.body
+      const { Date, PO, GP, Industry, Description, Sample_returned } = req.body
 
       // NEW: read the largest challanno from DB and add 1
       let nextChallanNo = 1
@@ -155,6 +202,7 @@ export default async function handler(req, res) {
               GP,
               Industry,
               Description,
+              Sample_returned: Boolean(Sample_returned),
               challanno: nextChallanNo,
             },
           ],
