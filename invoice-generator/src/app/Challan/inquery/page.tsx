@@ -12,6 +12,7 @@
     Date?: string | null;
     PO?: string | null;
     GP?: string | null;
+    Industry?: string | null;
     Description: unknown;
     Sample_returned?: boolean | null;
   };
@@ -131,7 +132,7 @@
 
     const generatePdfBytes = async (
       rows: { qty: string; description: string; indno: string }[],
-      options: { gp?: string; po?: string | null; challan?: string | null; sampleReturned?: boolean }
+      options: { gp?: string; po?: string | null; challan?: string | null; sampleReturned?: boolean; companyName?: string | null }
     ) => {
       const pdfDoc = await PDFDocument.create();
       const page = pdfDoc.addPage([595.28, 841.89]);
@@ -170,7 +171,13 @@
       const date = new Date().toLocaleDateString();
       const PO = options.po || "";
       const challan = options.challan || "";
-      const Company_Name = "Kassim Textile Mills Limited";
+      let Company_Name = options.companyName || "Kassim Textile Mills Limited";
+      try {
+        if (!options.companyName) {
+          const stored = localStorage.getItem('invoiceCompanyName');
+          if (stored) Company_Name = stored;
+        }
+      } catch {}
       drawLabelValue("Email", "z.ushahid@gmail.com", leftColX, topAfterLogo, smallSize);
       drawLabelValue("Contact", "03092308078", leftColX, topAfterLogo - lineGap, smallSize);
       drawLabelValue("Challan No", challan, leftColX, topAfterLogo - 2 * lineGap, smallSize);
@@ -259,6 +266,7 @@
           po: row.PO ?? null,
           challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null,
           sampleReturned: Boolean(row.Sample_returned),
+          companyName: row.Industry ?? null,
         });
         const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
@@ -278,6 +286,7 @@
           po: row.PO ?? null,
           challan: row.challanno != null ? String(row.challanno).padStart(5, "0") : null,
           sampleReturned: Boolean(row.Sample_returned),
+          companyName: row.Industry ?? null,
         });
         const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
