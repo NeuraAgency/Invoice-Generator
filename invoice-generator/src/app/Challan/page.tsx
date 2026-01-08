@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Generate, { mapChallanToRows } from "./components/generate";
 import dynamic from 'next/dynamic';
 import { useSearchParams } from "next/navigation";
@@ -7,10 +7,10 @@ import { useSearchParams } from "next/navigation";
 // Dynamically import Preview with SSR disabled to prevent server rendering of PDFViewer
 const Preview = dynamic(() => import('./components/preview'), { ssr: false });
 
-const Page = () => {
+const ChallanPageContent = () => {
   const searchParams = useSearchParams();
-  const editId = searchParams.get('editId');
-  const editChallan = searchParams.get('editChallan');
+  const editId = searchParams?.get('editId') ?? null;
+  const editChallan = searchParams?.get('editChallan') ?? null;
 
   const [rows, setRows] = useState(
     Array(7)
@@ -120,4 +120,10 @@ const Page = () => {
   );
 };
 
-export default Page;
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="text-white/70 p-4">Loading…</div>}>
+      <ChallanPageContent />
+    </Suspense>
+  );
+}
