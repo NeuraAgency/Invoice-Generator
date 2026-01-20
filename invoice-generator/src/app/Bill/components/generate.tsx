@@ -143,7 +143,12 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       try { localStorage.setItem('invoiceCompanyName', industry); } catch {}
     }
 
-    try { const padded = challanStr && /\d/.test(challanStr) ? String(Number(challanStr)).padStart(5,'0') : challanStr; localStorage.setItem('latestInvoiceChallan', padded); if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP)); } catch {}
+    try {
+      const padded = challanStr && /\d/.test(challanStr) ? String(Number(challanStr)).padStart(5,'0') : challanStr;
+      localStorage.setItem('latestInvoiceChallan', padded);
+      if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP));
+      if (item?.PO ?? item?.po) localStorage.setItem('latestInvoicePO', String(item?.PO ?? item?.po));
+    } catch {}
     const desc = item?.Description ?? item?.description ?? [];
     let mapped: RowData[] = [];
     if (Array.isArray(desc)) mapped = desc.map((d:any) => {

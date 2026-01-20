@@ -83,8 +83,36 @@ const WhatsAppPage = () => {
     }
   };
 
-  const handleContactClick = (contactId: string) => {
+  const handleContactClick = async (contactId: string) => {
+    const isOpening = selectedContact !== contactId;
     setSelectedContact(selectedContact === contactId ? null : contactId);
+    
+    // Mark messages as read when opening a contact
+    if (isOpening) {
+      try {
+        await fetch('/api/whatsapp/mark-read', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ contactId }),
+        });
+        
+        // Update local state to mark messages as read
+        setGroupedMessages(prev => {
+          const updated = { ...prev };
+          if (updated[contactId]) {
+            updated[contactId] = updated[contactId].map(msg => ({
+              ...msg,
+              read: true
+            }));
+          }
+          return updated;
+        });
+      } catch (err) {
+        console.error('Error marking messages as read:', err);
+      }
+    }
   };
 
   const handleAddContact = async (e: React.FormEvent) => {
@@ -201,6 +229,7 @@ const WhatsAppPage = () => {
             {contactIds.map((contactId) => {
               const contactMessages = groupedMessages[contactId];
               const messageCount = contactMessages.length;
+              const unreadCount = contactMessages.filter(msg => !(msg as any).read).length;
               const isSelected = selectedContact === contactId;
               const contactInfo = getContactInfo(contactId);
               
@@ -221,24 +250,41 @@ const WhatsAppPage = () => {
                   >
                     <div className="flex items-center gap-4 sm:gap-6">
                        <div className={`
-                         w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300
+                         relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300
                          ${isSelected ? 'bg-[var(--accent)] text-white scale-110' : 'bg-white/10 text-white/60'}
                        `}>
-                         {contactId.slice(0, 2).toUpperCase()}
+                         {(contactInfo?.company_name || contactId).slice(0, 2).toUpperCase()}
+                         {unreadCount > 0 && !isSelected && (
+                           <div className="absolute -top-1 -right-1 bg-[var(--accent)] text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-black shadow-lg">
+                             {unreadCount}
+                           </div>
+                         )}
                        </div>
                        <div>
-                         <h2 className={`text-xl sm:text-2xl font-bold transition-colors ${isSelected ? 'text-[var(--accent)]' : 'text-white'}`}>
-                           {contactInfo?.company_name || contactId}
-                         </h2>
+                         <div className="flex items-center gap-2">
+                           <h2 className={`text-xl sm:text-2xl font-bold transition-colors ${isSelected ? 'text-[var(--accent)]' : 'text-white'}`}>
+                             {contactInfo?.company_name || 'Unknown Company'}
+                           </h2>
+                           {unreadCount > 0 && (
+                             <span className="bg-[var(--accent)] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                               {unreadCount} new
+                             </span>
+                           )}
+                         </div>
                          <div className="flex items-center gap-3 mt-1 flex-wrap">
                             {contactInfo?.User_name && (
                               <span className="text-xs text-white/50">
-                                <span className="font-semibold">User:</span> {contactInfo.User_name}
+                                <span className="font-semibold">Contact Person:</span> {contactInfo.User_name}
                               </span>
                             )}
                             {contactInfo?.contact && (
                               <span className="text-xs text-white/50">
-                                <span className="font-semibold">Contact:</span> {contactInfo.contact}
+                                <span className="font-semibold">Phone:</span> {contactInfo.contact}
+                              </span>
+                            )}
+                            {!contactInfo?.company_name && (
+                              <span className="text-xs text-white/40 italic">
+                                ID: {contactId}
                               </span>
                             )}
                          </div>
@@ -271,43 +317,97 @@ const WhatsAppPage = () => {
                     </div>
                   </div>
                   
-                  {/* Messages Section */}
+                  {/* Messages Section - Chatbox Style */}
                   <div className={`
                     overflow-hidden transition-all duration-500 ease-in-out
-                    ${isSelected ? 'max-h-[1000px] opacity-100 border-t border-white/10' : 'max-h-0 opacity-0'}
+                    ${isSelected ? 'max-h-[800px] opacity-100 border-t border-white/10' : 'max-h-0 opacity-0'}
                   `}>
-                    <div className="p-4 sm:p-6">
-                      <div className="overflow-x-auto rounded-xl border border-white/5">
-                        <table className="w-full text-left border-collapse min-w-[600px]">
-                          <thead>
-                            <tr className="bg-white/5">
-                              <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] border-b border-white/10">Date & Time</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] border-b border-white/10">Message Content</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] border-b border-white/10 text-center">Event</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5">
-                            {contactMessages.map((msg) => (
-                              <tr key={msg.id} className="hover:bg-white/[0.02] transition-colors">
-                                <td className="px-6 py-4 text-sm text-white/50 font-mono whitespace-nowrap">
-                                  {msg.created_at
-                                    ? new Date(msg.created_at).toLocaleString()
-                                    : 'N/A'}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="text-sm text-white/80 leading-relaxed font-medium">
-                                    {msg.message || <span className="text-white/20 italic">No content</span>}
+                    <div className="p-4 sm:p-6 bg-gradient-to-b from-white/[0.02] to-transparent">
+                      {/* Chat Container */}
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                        {contactMessages.map((msg, index) => {
+                          const currentDate = msg.created_at ? new Date(msg.created_at).toLocaleDateString() : null;
+                          const previousDate = index > 0 && contactMessages[index - 1].created_at 
+                            ? new Date(contactMessages[index - 1].created_at!).toLocaleDateString() 
+                            : null;
+                          const showDateHeader = currentDate && currentDate !== previousDate;
+                          
+                          // Check if message is an image URL
+                          const isImageUrl = msg.message && (
+                            msg.message.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) ||
+                            msg.message.startsWith('http') && msg.message.includes('image')
+                          );
+
+                          return (
+                            <div key={msg.id}>
+                              {/* Date Header */}
+                              {showDateHeader && (
+                                <div className="flex items-center justify-center my-6">
+                                  <div className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5">
+                                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                                      {currentDate}
+                                    </span>
                                   </div>
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                  <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-[10px] font-bold uppercase tracking-wider border border-[var(--accent)]/20">
-                                    {msg.event || 'N/A'}
+                                </div>
+                              )}
+                              
+                              {/* Message Bubble */}
+                              <div className="flex items-end gap-3 animate-fadeIn">
+                                {/* Avatar */}
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-bold text-[var(--accent)]">
+                                    {(contactInfo?.company_name || contactId).slice(0, 1).toUpperCase()}
                                   </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                </div>
+                                
+                                {/* Message Content */}
+                                <div className="flex-1 max-w-[80%]">
+                                  <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm p-4 backdrop-blur-sm hover:bg-white/[0.07] transition-all duration-200 group">
+                                    {/* Message Text or Image */}
+                                    {isImageUrl ? (
+                                      <div className="space-y-2">
+                                        <img 
+                                          src={msg.message || ''} 
+                                          alt="Shared image" 
+                                          className="rounded-xl max-w-full h-auto border border-white/10"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                            const fallback = e.currentTarget.nextElementSibling;
+                                            if (fallback) fallback.classList.remove('hidden');
+                                          }}
+                                        />
+                                        <div className="hidden text-sm text-white/60 italic">
+                                          Failed to load image: {msg.message}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-white/80 leading-relaxed break-words">
+                                        {msg.message || <span className="text-white/30 italic">No content</span>}
+                                      </p>
+                                    )}
+                                    
+                                    {/* Timestamp and Event Badge */}
+                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
+                                      <span className="text-[10px] text-white/30 font-mono">
+                                        {msg.created_at
+                                          ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          : 'N/A'}
+                                      </span>
+                                      {msg.event && (
+                                        <>
+                                          <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-bold uppercase tracking-wider border border-[var(--accent)]/20">
+                                            {msg.event}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

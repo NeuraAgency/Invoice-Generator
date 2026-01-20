@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       // If that join/select fails for any reason, fall back to a simple invoice select
       // to avoid returning 500 to the client.
       try {
-        let query = supabase.from('invoice').select('*, DeliveryChallan(Industry, GP)')
+        let query = supabase.from('invoice').select('*, DeliveryChallan(Industry, GP, PO)')
 
         // Numeric prefix filter for billno
         if (bill && typeof bill === 'string') {

@@ -12,8 +12,9 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
   const [bill, setBill] = useState<string>("00000");
   const [invoiceChallan, setInvoiceChallan] = useState<string>("00000");
   const [invoiceGP, setInvoiceGP] = useState<string>("");
+  const [invoicePO, setInvoicePO] = useState<string>("00000");
   const date = new Date().toLocaleDateString();
-  const PO = "00000";
+  const PO = invoicePO || "00000";
   const challan = invoiceChallan;
   const GP = invoiceGP || "";
   useEffect(() => {
@@ -24,6 +25,8 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       if (storedChallan) setInvoiceChallan(storedChallan);
       const storedGP = localStorage.getItem("latestInvoiceGP");
       if (storedGP) setInvoiceGP(storedGP);
+      const storedPO = localStorage.getItem("latestInvoicePO");
+      if (storedPO) setInvoicePO(storedPO);
     } catch {}
     async function generatePDF() {
       const pdfDoc = await PDFDocument.create();
@@ -250,7 +253,7 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
         return null;
       });
     };
-  }, [rows, bill, invoiceChallan, invoiceGP]);
+  }, [rows, bill, invoiceChallan, invoiceGP, invoicePO]);
   return (
     <div className="w-full h-screen flex flex-col items-start gap-4">
       <div className="w-full h-[580px] rounded-xl shadow-lg overflow-hidden bg-white">

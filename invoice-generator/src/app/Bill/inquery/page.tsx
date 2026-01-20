@@ -15,6 +15,7 @@ type InvoiceRow = {
 	DeliveryChallan?: {
 		Industry?: string;
 		GP?: string;
+		PO?: string;
 	};
 };
 
@@ -133,7 +134,7 @@ const InvoiceInqueryPage = () => {
 		rows: {
 			rate: string; qty: string; description: string; amount: string 
 }[],
-		meta: { bill?: string; challan?: string; gp?: string }
+		meta: { bill?: string; challan?: string; gp?: string; po?: string }
 	) => {
 		const pdfDoc = await PDFDocument.create();
 		const page = pdfDoc.addPage([595.28, 841.89]);
@@ -171,7 +172,7 @@ const InvoiceInqueryPage = () => {
 		drawText(`Bill No: ${meta.bill ?? ""}`, leftColX, topAfterLogo - 2 * gap, small);
 		drawText(`Challan No: ${meta.challan ?? ""}`, leftColX, topAfterLogo - 3 * gap, small);
 		drawText(`Date: ${new Date().toLocaleDateString()}`, leftColX, topAfterLogo - 4 * gap, small);
-		drawText(`P.O. No: ${"00000"}`, rightColX, topAfterLogo, small);
+		drawText(`P.O. No: ${meta.po ?? "00000"}`, rightColX, topAfterLogo, small);
 		drawText(`G.P. No: ${meta.gp ?? ""}`, rightColX, topAfterLogo - gap, small);
 		const storedCompany = typeof window !== "undefined" ? localStorage.getItem("invoiceCompanyName") : null;
 		const Company_Name = storedCompany || "Mekotex P.V.T Limited";
@@ -464,6 +465,7 @@ const InvoiceInqueryPage = () => {
 		try {
 			const rows = toRowData(row.Description);
 			let gp: string | undefined = undefined;
+			let po: string | undefined = row?.DeliveryChallan?.PO;
 			if (row.challanno != null) {
 				try {
 					const ch = encodeURIComponent(String(row.challanno));
@@ -472,6 +474,7 @@ const InvoiceInqueryPage = () => {
 						const data = await res.json();
 						if (Array.isArray(data) && data.length > 0) {
 							gp = data[0]?.GP ?? data[0]?.gp ?? undefined;
+							po = po ?? (data[0]?.PO ?? data[0]?.po ?? undefined);
 						}
 					}
 				} catch (e) {
@@ -482,6 +485,7 @@ const InvoiceInqueryPage = () => {
 				bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 				challan: row.challanno ? String(row.challanno).padStart(5, "0") : undefined,
 				gp,
+				po,
 			});
 			const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
 			const url = URL.createObjectURL(blob);
@@ -514,6 +518,7 @@ const InvoiceInqueryPage = () => {
 			for (const row of sorted) {
 				const rows = toRowData(row.Description);
 				let gp: string | undefined = undefined;
+				let po: string | undefined = row?.DeliveryChallan?.PO;
 				if (row.challanno != null) {
 					try {
 						const ch = encodeURIComponent(String(row.challanno));
@@ -522,6 +527,7 @@ const InvoiceInqueryPage = () => {
 							const data = await res.json();
 							if (Array.isArray(data) && data.length > 0) {
 								gp = data[0]?.GP ?? data[0]?.gp ?? undefined;
+								po = po ?? (data[0]?.PO ?? data[0]?.po ?? undefined);
 							}
 						}
 					} catch {}
@@ -530,6 +536,7 @@ const InvoiceInqueryPage = () => {
 					bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 					challan: row.challanno ? String(row.challanno).padStart(5, "0") : undefined,
 					gp,
+					po,
 				});
 				const billStr = String(row.billno).includes('-') ? String(row.billno) : String(row.billno).padStart(5, "0");
 				zip.file(`${billStr}.pdf`, bytes);

@@ -2,43 +2,30 @@ import Link from "next/link";
 import { getSupabaseAdminClient } from "../lib/supabaseServer";
 
 // quickActions removed — replaced by monthly totals graph
-
-const timeline = [
-  {
-    title: "Invoice #INV-204 marked paid",
-    meta: "Today • Finance Team",
-    status: "Paid",
-  },
-  {
-    title: "Quotation #Q-118 shared with client",
-    meta: "Yesterday • Sales",
-    status: "Sent",
-  },
-  {
-    title: "Challan #CH-077 dispatched",
-    meta: "Mon • Logistics",
-    status: "In transit",
-  },
-  {
-    title: "5 documents queued for extraction",
-    meta: "Mon • Automation",
-    status: "Processing",
-  },
-];
+// timeline will be built dynamically from database data
 
 const page = async () => {
   const supabase = getSupabaseAdminClient();
 
-  const [challansRes, invoicesRes] = await Promise.all([
+  const [challansRes, invoicesRes, whatsappRes, contactsRes] = await Promise.all([
     supabase.from("DeliveryChallan").select("challanno"),
     supabase.from("invoice")
       .select("challanno, created_at, Description")
       .order("created_at", { ascending: false })
       .limit(2000),
+    supabase.from("whatsapp_messages")
+      .select("id, message, created_at, contactId, event, read")
+      .eq("read", false)  // Only fetch unread messages
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase.from("contacts")
+      .select("contactId, company_name, User_name")
   ]);
 
   const challans = challansRes.data ?? [];
   const invoices = invoicesRes.data ?? [];
+  const whatsappMessages = whatsappRes.data ?? [];
+  const contacts = contactsRes.data ?? [];
 
   const challanCount = challans.length;
   const invoiceCount = invoices.length;
@@ -124,6 +111,64 @@ const page = async () => {
     return `${mm}`;
   });
   const chartValues = monthKeys.map((k) => totalsMap[k] || 0);
+
+  // Build dynamic timeline with WhatsApp messages
+  const contactMap = new Map(contacts.map(c => [c.contactId, c]));
+  
+  const getRelativeTime = (dateStr: string | null) => {
+    if (!dateStr) return "Recently";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const whatsappActivities = whatsappMessages.slice(0, 5).map(msg => {
+    const contact = msg.contactId ? contactMap.get(msg.contactId) : null;
+    const companyName = contact?.company_name || contact?.User_name || "Unknown Contact";
+    const messagePreview = msg.message ? 
+      (msg.message.length > 30 ? msg.message.substring(0, 30) + "..." : msg.message) : 
+      "New message";
+    
+    return {
+      title: `WhatsApp from ${companyName}`,
+      meta: `${getRelativeTime(msg.created_at)} • WhatsApp`,
+      status: "New",
+      timestamp: msg.created_at ? new Date(msg.created_at).getTime() : 0,
+      type: "whatsapp" as const
+    };
+  });
+
+  const staticActivities = [
+    {
+      title: "Invoice #INV-204 marked paid",
+      meta: "Today • Finance Team",
+      status: "Paid",
+      timestamp: Date.now() - 3600000, // 1 hour ago
+      type: "invoice" as const
+    },
+    {
+      title: "Quotation #Q-118 shared with client",
+      meta: "Yesterday • Sales",
+      status: "Sent",
+      timestamp: Date.now() - 86400000, // 1 day ago
+      type: "quotation" as const
+    },
+  ];
+
+  const timeline = [...whatsappActivities, ...staticActivities]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 4);
   return (
     <main className="flex-1 min-h-screen bg-black text-white overflow-y-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
