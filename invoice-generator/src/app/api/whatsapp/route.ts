@@ -76,7 +76,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (raw?.body ?? raw) as any;
-    if (!body || body.event !== "messages.upsert") {
+    const eventRaw = String(body?.event || "");
+    const eventNorm = eventRaw.toLowerCase().replace(/_/g, ".");
+    if (!body || eventNorm !== "messages.upsert") {
       return NextResponse.json({ ignore: true, reason: "Not a message event" }, { status: 200 });
     }
 
@@ -100,7 +102,8 @@ export async function POST(request: NextRequest) {
     const timestampIso = parseMaybeEpochSecondsToIso(data.messageTimestamp);
 
     const messageType: string = String(data.messageType || "");
-    const isImage = messageType === "imageMessage";
+    const messageTypeNorm = messageType.toLowerCase();
+    const isImage = messageTypeNorm === "imagemessage";
 
     let messageText = extractTextMessage(data);
     if (!isImage && !messageText) {
@@ -179,7 +182,7 @@ export async function POST(request: NextRequest) {
       const minimalRow = {
         id: messageId,
         contactId,
-        event: body.event,
+        event: eventRaw,
         instance: body.instance ?? null,
         message: messageText || null,
         created_at: timestampIso,
@@ -195,7 +198,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        event: body.event,
+        event: eventRaw,
         instance: body.instance ?? null,
         contactId,
         messageId,
