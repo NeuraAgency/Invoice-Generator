@@ -250,24 +250,10 @@ const WhatsAppPage = () => {
                   >
                     <div className="flex items-center gap-4 sm:gap-6">
                        <div className={`
-                         relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300 overflow-hidden
+                         relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300
                          ${isSelected ? 'bg-[var(--accent)] text-white scale-110' : 'bg-white/10 text-white/60'}
                        `}>
-                         {contactInfo?.profile_picture_url ? (
-                           <img 
-                             src={contactInfo.profile_picture_url} 
-                             alt={contactInfo.company_name || contactId}
-                             className="w-full h-full object-cover"
-                             onError={(e) => {
-                               e.currentTarget.style.display = 'none';
-                               const fallback = e.currentTarget.nextElementSibling;
-                               if (fallback) fallback.classList.remove('hidden');
-                             }}
-                           />
-                         ) : null}
-                         <span className={contactInfo?.profile_picture_url ? 'hidden' : ''}>
-                           {(contactInfo?.company_name || contactId).slice(0, 2).toUpperCase()}
-                         </span>
+                         {(contactInfo?.company_name || contactId).slice(0, 2).toUpperCase()}
                          {unreadCount > 0 && !isSelected && (
                            <div className="absolute -top-1 -right-1 bg-[var(--accent)] text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-black shadow-lg">
                              {unreadCount}
@@ -368,20 +354,8 @@ const WhatsAppPage = () => {
                               {/* Message Bubble */}
                               <div className="flex items-end gap-3 animate-fadeIn">
                                 {/* Avatar */}
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                                  {contactInfo?.profile_picture_url ? (
-                                    <img 
-                                      src={contactInfo.profile_picture_url} 
-                                      alt={contactInfo.company_name || contactId}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        const fallback = e.currentTarget.nextElementSibling;
-                                        if (fallback) fallback.classList.remove('hidden');
-                                      }}
-                                    />
-                                  ) : null}
-                                  <span className={`text-xs font-bold text-[var(--accent)] ${contactInfo?.profile_picture_url ? 'hidden' : ''}`}>
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-bold text-[var(--accent)]">
                                     {(contactInfo?.company_name || contactId).slice(0, 1).toUpperCase()}
                                   </span>
                                 </div>
