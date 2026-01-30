@@ -104,7 +104,7 @@ const WhatsAppPage = () => {
           if (updated[contactId]) {
             updated[contactId] = updated[contactId].map(msg => ({
               ...msg,
-              read: true
+              status: true
             }));
           }
           return updated;
@@ -229,7 +229,7 @@ const WhatsAppPage = () => {
             {contactIds.map((contactId) => {
               const contactMessages = groupedMessages[contactId];
               const messageCount = contactMessages.length;
-              const unreadCount = contactMessages.filter(msg => !(msg as any).read).length;
+              const unreadCount = contactMessages.filter(msg => (msg as any).status === false || (msg as any).status === null).length;
               const isSelected = selectedContact === contactId;
               const contactInfo = getContactInfo(contactId);
               

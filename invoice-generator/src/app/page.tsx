@@ -14,8 +14,8 @@ const page = async () => {
       .order("created_at", { ascending: false })
       .limit(2000),
     supabase.from("whatsapp_messages")
-      .select("id, message, created_at, contactId, event, read")
-      .eq("read", false)  // Only fetch unread messages
+      .select("id, message, created_at, contactId, event, status")
+      .or("status.eq.false,status.is.null")  // Fetch unread (false) or null messages
       .order("created_at", { ascending: false })
       .limit(10),
     supabase.from("contacts")
@@ -145,7 +145,8 @@ const page = async () => {
       meta: `${getRelativeTime(msg.created_at)} • WhatsApp`,
       status: "New",
       timestamp: msg.created_at ? new Date(msg.created_at).getTime() : 0,
-      type: "whatsapp" as const
+      type: "whatsapp" as const,
+      href: "/WhatsApp"
     };
   });
 
@@ -155,14 +156,16 @@ const page = async () => {
       meta: "Today • Finance Team",
       status: "Paid",
       timestamp: Date.now() - 3600000, // 1 hour ago
-      type: "invoice" as const
+      type: "invoice" as const,
+      href: "/Bill"
     },
     {
       title: "Quotation #Q-118 shared with client",
       meta: "Yesterday • Sales",
       status: "Sent",
       timestamp: Date.now() - 86400000, // 1 day ago
-      type: "quotation" as const
+      type: "quotation" as const,
+      href: "/Quotation"
     },
   ];
 
@@ -316,13 +319,17 @@ const page = async () => {
               
               <div className="card-custom rounded-2xl shadow-xl ring-1 ring-white/10 divide-y divide-white/5">
                 {timeline.map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-4 px-6 py-5 group hover:bg-[#1e293b] transition-colors">
+                  <Link 
+                    key={idx} 
+                    href={item.href || "#"}
+                    className="flex items-start gap-4 px-6 py-5 group hover:bg-[#1e293b] transition-colors cursor-pointer"
+                  >
                     <div className="mt-1.5 h-2 w-2 rounded-full bg-orange-500 shadow-[0_0_8px_#f97316]"></div>
                     <div className="flex-1 space-y-1">
                       <p className="text-xs font-bold text-slate-200 group-hover:text-white transition-colors">{item.title}</p>
                       <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">{item.meta}</p>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
 

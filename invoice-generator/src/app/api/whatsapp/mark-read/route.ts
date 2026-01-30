@@ -13,12 +13,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Mark all messages from this contact as read
+    // Mark all messages from this contact as read (both false and null status)
     const { error } = await supabase
       .from("whatsapp_messages")
-      .update({ read: true })
+      .update({ status: true })
       .eq("contactId", contactId)
-      .eq("read", false);
+      .or("status.eq.false,status.is.null");
 
     if (error) {
       console.error("Error marking messages as read:", error);

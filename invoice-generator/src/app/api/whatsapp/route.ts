@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
       event: eventRaw || null,
       instance: body?.instance ?? null,
       created_at: timestampIso || new Date().toISOString(),
+      status: false,
     };
 
     const { error: insertError } = await supabase
