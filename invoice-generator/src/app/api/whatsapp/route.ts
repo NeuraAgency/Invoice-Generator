@@ -93,6 +93,53 @@ export async function POST(request: NextRequest) {
     const messageId: string = data?.key?.id || `msg_${Date.now()}`;
     const timestampIso = parseMaybeEpochSecondsToIso(data?.messageTimestamp);
     
+    // Extract push name (contact name from WhatsApp)
+    const pushName = data?.pushName || null;
+    
+    // Try to fetch profile picture from Evolution API
+    let profilePictureUrl: string | null = null;
+    if (contactId && body?.instance && body?.server_url) {
+      try {
+        const evolutionUrl = body.server_url;
+        const instance = body.instance;
+        const apiKey = body?.apikey;
+        
+        const profileRes = await fetch(
+          `${evolutionUrl}/chat/fetchProfilePictureUrl/${instance}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(apiKey ? { 'apikey': apiKey } : {}),
+            },
+            body: JSON.stringify({ number: `${contactId}@s.whatsapp.net` }),
+          }
+        );
+        
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          profilePictureUrl = profileData?.profilePictureUrl || profileData?.url || null;
+        }
+      } catch (err) {
+        console.error('Error fetching profile picture:', err);
+      }
+    }
+    
+    // Update or create contact with profile picture and name
+    if (contactId) {
+      try {
+        const updateData: any = { contactId };
+        if (pushName) updateData.User_name = pushName;
+        if (profilePictureUrl) updateData.profile_picture_url = profilePictureUrl;
+        
+        await supabase
+          .from('contacts')
+          .upsert(updateData, { onConflict: 'contactId' });
+      } catch (err) {
+        console.error('Error updating contact profile:', err);
+      }
+    }
+    
     // Extract message text from any source
     let messageText = extractTextMessage(data);
 
