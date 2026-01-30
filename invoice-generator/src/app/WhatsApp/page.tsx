@@ -386,21 +386,13 @@ const WhatsAppPage = () => {
                                       </p>
                                     )}
                                     
-                                    {/* Timestamp and Event Badge */}
+                                    {/* Timestamp */}
                                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
                                       <span className="text-[10px] text-white/30 font-mono">
                                         {msg.created_at
                                           ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                           : 'N/A'}
                                       </span>
-                                      {msg.event && (
-                                        <>
-                                          <span className="w-1 h-1 rounded-full bg-white/20"></span>
-                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-bold uppercase tracking-wider border border-[var(--accent)]/20">
-                                            {msg.event}
-                                          </span>
-                                        </>
-                                      )}
                                     </div>
                                   </div>
                                 </div>
