@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     const baseRow = {
       id: messageId,
       contactId,
-      event: body.event,
+      event: eventRaw,
       instance: body.instance ?? null,
       message: messageText || null,
       created_at: timestampIso,
