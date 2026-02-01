@@ -4,9 +4,42 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdminClient()
 
+    const shouldExcludeInvoiced = (val) => {
+      const s = String(val ?? '').toLowerCase().trim()
+      return s === '1' || s === 'true' || s === 'yes' || s === 'y'
+    }
+
+    const filterOutInvoiced = async (rows) => {
+      try {
+        const challannos = (Array.isArray(rows) ? rows : [])
+          .map((r) => r?.challanno)
+          .filter((c) => c != null)
+
+        if (!challannos.length) return Array.isArray(rows) ? rows : []
+
+        const { data: invRows, error: invErr } = await supabase
+          .from('invoice')
+          .select('challanno')
+          .in('challanno', challannos)
+
+        if (invErr) {
+          // Fail open: return original challans rather than 500
+          console.error('excludeInvoiced invoice lookup error:', invErr)
+          return Array.isArray(rows) ? rows : []
+        }
+
+        const invoicedSet = new Set((invRows || []).map((r) => r?.challanno).filter((c) => c != null))
+        return (Array.isArray(rows) ? rows : []).filter((r) => !invoicedSet.has(r?.challanno))
+      } catch (e) {
+        console.error('excludeInvoiced exception:', e)
+        return Array.isArray(rows) ? rows : []
+      }
+    }
+
     if (req.method === 'GET') {
-      const { id, challan, limit, exact, industry, date, from, to, item } = req.query
+      const { id, challan, limit, exact, industry, date, from, to, item, excludeInvoiced } = req.query
       const lim = Number(limit) || 50
+      const exclude = shouldExcludeInvoiced(excludeInvoiced)
 
       // Fetch single challan by primary id (used for edit flows)
       if (id && typeof id === 'string') {
@@ -44,7 +77,8 @@ export default async function handler(req, res) {
               .limit(lim)
 
             if (error) return res.status(500).json({ error: error.message })
-            return res.status(200).json(data)
+            const out = exclude ? await filterOutInvoiced(data) : data
+            return res.status(200).json(out)
           }
 
           // Legacy: best-effort prefix search by casting to text and using like
@@ -61,7 +95,8 @@ export default async function handler(req, res) {
 
           const prefix = String(parsed)
           const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
-          return res.status(200).json(filtered)
+          const out = exclude ? await filterOutInvoiced(filtered) : filtered
+          return res.status(200).json(out)
         }
       }
 
@@ -108,7 +143,8 @@ export default async function handler(req, res) {
           const lim = Number(limit) || 50
           const prefix = String(parsed)
           const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
-          return res.status(200).json(filtered)
+          const out = exclude ? await filterOutInvoiced(filtered) : filtered
+          return res.status(200).json(out)
         }
       }
 
@@ -125,10 +161,12 @@ export default async function handler(req, res) {
           }
           return false
         }).slice(0, lim)
-        return res.status(200).json(filtered)
+        const out = exclude ? await filterOutInvoiced(filtered) : filtered
+        return res.status(200).json(out)
       }
 
-      return res.status(200).json(data)
+      const out = exclude ? await filterOutInvoiced(data) : data
+      return res.status(200).json(out)
     }
 
     if (req.method === 'PATCH') {

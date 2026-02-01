@@ -36,6 +36,14 @@ const InvoiceInqueryPage = () => {
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
 	const [newDateDt, setNewDateDt] = useState<Date | null>(null);
 
+	// Generate Bill Modal state
+	const [showGenerateBillModal, setShowGenerateBillModal] = useState(false);
+	const [genCompanyQuery, setGenCompanyQuery] = useState("");
+	const [genCompanyOptions, setGenCompanyOptions] = useState<string[]>([]);
+	const [genUnInvoicedChallans, setGenUnInvoicedChallans] = useState<any[]>([]);
+	const [genLoadingChallans, setGenLoadingChallans] = useState(false);
+	const [genSelectedCompany, setGenSelectedCompany] = useState("");
+
 	const qs = useMemo(() => {
 		const params = new URLSearchParams();
 		if (billQuery.trim()) params.set("bill", billQuery.trim());
@@ -83,6 +91,52 @@ const InvoiceInqueryPage = () => {
 		};
 	}, [qs]);
 
+	// Load company options for generate bill modal
+	useEffect(() => {
+		if (!showGenerateBillModal) return;
+		let active = true;
+		(async () => {
+			try {
+				const res = await fetch('/api/challan-companies');
+				if (!res.ok) return;
+				const list = await res.json();
+				if (active && Array.isArray(list)) setGenCompanyOptions(list);
+			} catch {}
+		})();
+		return () => { active = false; };
+	}, [showGenerateBillModal]);
+
+	// Fetch un-invoiced challans when company is selected
+	useEffect(() => {
+		if (!showGenerateBillModal || !genSelectedCompany) {
+			setGenUnInvoicedChallans([]);
+			return;
+		}
+		const controller = new AbortController();
+		(async () => {
+			try {
+				setGenLoadingChallans(true);
+				const params = new URLSearchParams({
+					industry: genSelectedCompany,
+					excludeInvoiced: "1",
+					limit: "100"
+				});
+				const res = await fetch(`/api/challan?${params}`, { signal: controller.signal });
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const data = await res.json();
+				setGenUnInvoicedChallans(Array.isArray(data) ? data : []);
+			} catch (e: any) {
+				if (e?.name !== "AbortError") {
+					console.error("Failed to load un-invoiced challans:", e);
+					setGenUnInvoicedChallans([]);
+				}
+			} finally {
+				setGenLoadingChallans(false);
+			}
+		})();
+		return () => controller.abort();
+	}, [showGenerateBillModal, genSelectedCompany]);
+
 	const togglePaid = async (row: InvoiceRow) => {
 		if (row?.billno == null) return;
 		const next = !Boolean(row.status);
@@ -104,6 +158,97 @@ const InvoiceInqueryPage = () => {
 				n.delete(key);
 				return n;
 			});
+		}
+	};
+
+	const handleGenerateInvoiceForChallan = async (challan: any) => {
+		try {
+			const challanNo = challan?.challanno ?? challan?.id;
+			if (!challanNo) {
+				alert("Invalid challan number");
+				return;
+			}
+
+			// Map Description to invoice lines
+			const desc = challan?.Description ?? [];
+			const lines = (Array.isArray(desc) ? desc : [desc]).map((d: any) => {
+				const qty = String(d?.qty ?? d?.quantity ?? '');
+				const description = String(d?.description ?? d?.materialDescription ?? '');
+				const rate = String(d?.rate ?? '0');
+				const qn = Number(qty) || 0;
+				const rn = Number(rate) || 0;
+				const total = Math.round((qn * rn + Number.EPSILON) * 100) / 100;
+				return { qty, description, rate, amount: String(total.toFixed(2)) };
+			});
+
+			// Generate bill number
+			const companyName = challan?.Industry ?? genSelectedCompany;
+			const getInitials = (name: string) => name.split(/\s+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('');
+			const initials = getInitials(companyName);
+
+			// Fetch latest invoice for this company to determine next bill number
+			let billNumber = `${initials}-0001`;
+			try {
+				const res = await fetch('/api/invoice?limit=100');
+				if (res.ok) {
+					const data = await res.json();
+					const companyInvoices = data.filter((inv: any) =>
+						inv.DeliveryChallan?.Industry === companyName ||
+						(inv.billno && String(inv.billno).startsWith(initials))
+					);
+					let maxNum = 0;
+					companyInvoices.forEach((inv: any) => {
+						const numPart = String(inv.billno).split('-')[1] || String(inv.billno).match(/\d+$/)?.[0];
+						if (numPart) {
+							const n = parseInt(numPart);
+							if (!isNaN(n)) maxNum = Math.max(maxNum, n);
+						}
+					});
+					billNumber = `${initials}-${String(maxNum + 1).padStart(4, '0')}`;
+				}
+			} catch {}
+
+			const payload = {
+				challanno: Number(challanNo),
+				billno: billNumber,
+				lines
+			};
+
+			const saveRes = await fetch('/api/invoice', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+
+			if (!saveRes.ok) {
+				const errData = await saveRes.json().catch(() => ({}));
+				throw new Error(errData.error || `HTTP ${saveRes.status}`);
+			}
+
+			// Remove from list
+			setGenUnInvoicedChallans(prev => prev.filter(c => c.challanno !== challan.challanno));
+			alert(`Invoice ${billNumber} generated successfully!`);
+		} catch (err: any) {
+			console.error("Failed to generate invoice:", err);
+			alert(`Failed to generate invoice: ${err?.message || 'Unknown error'}`);
+		}
+	};
+
+	const handleGenerateAllInvoices = () => {
+		if (genUnInvoicedChallans.length === 0) {
+			alert("No challans to generate invoices for");
+			return;
+		}
+
+		// Store all challans in localStorage for batch processing in /Bill page
+		try {
+			localStorage.setItem('batchChallans', JSON.stringify(genUnInvoicedChallans));
+			localStorage.setItem('batchCompany', genSelectedCompany);
+			// Navigate to /Bill page
+			window.location.href = '/Bill';
+		} catch (e) {
+			console.error('Failed to store batch challans:', e);
+			alert('Failed to prepare batch generation');
 		}
 	};
 
@@ -614,6 +759,12 @@ const InvoiceInqueryPage = () => {
 							</svg>
 							Print Bill List
 						</button>
+						<button onClick={() => setShowGenerateBillModal(true)} className="bg-white text-black px-4 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition shadow-lg flex items-center gap-2 border border-[var(--accent)]">
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+							</svg>
+							Generate Bill
+						</button>
 					</div>
 					<div className="mt-4 text-xs text-white/70">{loading ? "Loading..." : error ? `Error: ${error}` : `${results.length} result(s)`}</div>
 					<div className="mt-4 overflow-auto rounded-xl border border-white/10 h-[70vh] max-h-[70vh] bg-black p-2">
@@ -752,6 +903,133 @@ const InvoiceInqueryPage = () => {
 									Download Selected (ZIP)
 								</button>
 							</div>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{showGenerateBillModal && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+					<div className="w-full max-w-5xl bg-[#1e1e1e] border border-[var(--accent)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+						<div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/40">
+							<div>
+								<h2 className="text-xl font-bold text-white">Generate Bills from Un-invoiced Challans</h2>
+								<p className="text-xs text-white/50 mt-1">Select a company to see challans without invoices</p>
+							</div>
+							<button onClick={() => setShowGenerateBillModal(false)} className="text-white/50 hover:text-white transition">
+								<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+							</button>
+						</div>
+
+						<div className="p-6 flex-1 overflow-auto space-y-6">
+							{/* Company Filter */}
+							<div className="p-4 bg-white/5 rounded-xl border border-white/5">
+								<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2 block">Select Company</label>
+								<div className="relative">
+									<input
+										type="text"
+										value={genCompanyQuery}
+										onChange={(e) => setGenCompanyQuery(e.target.value)}
+										onFocus={() => setGenSelectedCompany("")}
+										className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+										placeholder="Type to search company..."
+									/>
+									{genCompanyQuery && !genSelectedCompany && (
+										<div className="absolute left-0 right-0 z-30 mt-2 max-h-48 overflow-auto bg-black border border-white/10 rounded-md shadow-xl">
+											{genCompanyOptions.filter(opt => opt.toLowerCase().includes(genCompanyQuery.toLowerCase())).slice(0, 20).map(opt => (
+												<button
+													key={opt}
+													className="block w-full text-left px-3 py-2 text-xs hover:bg-white/10 text-white"
+													onClick={() => {
+														setGenSelectedCompany(opt);
+														setGenCompanyQuery(opt);
+													}}
+												>
+													{opt}
+												</button>
+											))}
+										</div>
+									)}
+								</div>
+								{genSelectedCompany && (
+									<div className="mt-3 flex items-center gap-2">
+										<span className="text-sm text-white">Selected: <span className="text-[var(--accent)] font-semibold">{genSelectedCompany}</span></span>
+										<button
+											onClick={() => {
+												setGenSelectedCompany("");
+												setGenCompanyQuery("");
+											}}
+											className="text-xs text-white/60 hover:text-white underline"
+										>
+											Clear
+										</button>
+									</div>
+								)}
+							</div>
+
+							{/* Challan List */}
+							{genSelectedCompany && (
+								<div className="p-4 bg-white/5 rounded-xl border border-white/5">
+									<div className="flex items-center justify-between mb-3">
+										<h3 className="text-sm font-semibold text-white">Un-invoiced Challans ({genUnInvoicedChallans.length})</h3>
+										{genUnInvoicedChallans.length > 0 && (
+											<button
+												onClick={handleGenerateAllInvoices}
+												className="bg-[var(--accent)] text-black px-4 py-1.5 rounded-md text-xs font-bold hover:opacity-90 transition"
+											>
+												Generate All ({genUnInvoicedChallans.length})
+											</button>
+										)}
+									</div>
+
+									{genLoadingChallans ? (
+										<div className="text-xs text-white/60 py-4">Loading challans...</div>
+									) : genUnInvoicedChallans.length === 0 ? (
+										<div className="text-xs text-white/60 py-4">No un-invoiced challans found for this company.</div>
+									) : (
+										<div className="flex flex-wrap gap-2">
+											{genUnInvoicedChallans.map((challan) => {
+												const challanStr = String(challan.challanno ?? '').padStart(5, '0');
+												return (
+													<div
+														key={challan.id ?? challan.challanno}
+														className="group relative bg-black/60 border border-[var(--accent)] rounded-full px-4 py-2 flex items-center gap-3 hover:bg-[var(--accent)]/20 transition-all cursor-pointer"
+													>
+														<div
+															onClick={() => {
+																// Copy challan details to localStorage for Bill/Generate page
+																try {
+																	localStorage.setItem('latestInvoiceChallan', challanStr);
+																	if (challan?.GP) localStorage.setItem('latestInvoiceGP', String(challan.GP));
+																	if (challan?.PO) localStorage.setItem('latestInvoicePO', String(challan.PO));
+																	localStorage.setItem('invoiceCompanyName', genSelectedCompany);
+																} catch {}
+																// Open in new tab
+																window.open('/Bill', '_blank');
+															}}
+															className="flex-1"
+														>
+															<span className="text-sm font-bold text-[var(--accent)]">#{challanStr}</span>
+															{challan.GP && <span className="text-xs text-white/60 ml-2">GP: {challan.GP}</span>}
+														</div>
+														<button
+															onClick={() => handleGenerateInvoiceForChallan(challan)}
+															className="opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--accent)] text-black px-2 py-1 rounded text-[10px] font-bold"
+															title="Generate invoice for this challan"
+														>
+															Generate
+														</button>
+													</div>
+												);
+											})}
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+
+						<div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-black/40">
+							<button onClick={() => setShowGenerateBillModal(false)} className="px-5 py-2 rounded-lg text-xs font-bold text-white/70 hover:text-white transition">Close</button>
 						</div>
 					</div>
 				</div>

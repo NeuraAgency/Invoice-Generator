@@ -13,6 +13,11 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [companyName, setCompanyName] = useState<string>('');
   const [billNumber, setBillNumber] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
+  // Batch mode state
+  const [batchChallans, setBatchChallans] = useState<any[]>([]);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(0);
+  const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
 
   const getInitials = (name: string) => {
     return name
@@ -111,9 +116,53 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       setSuccessMsg(`Invoice ${billStr || ''} generated and saved successfully!`);
       setTimeout(() => setSuccessMsg(null), 5000);
       onConfirm();
+      
+      // If in batch mode, move to next challan
+      if (isBatchMode && batchChallans.length > 0) {
+        const nextIndex = currentBatchIndex + 1;
+        if (nextIndex < batchChallans.length) {
+          setCurrentBatchIndex(nextIndex);
+          loadChallanAtIndex(batchChallans, nextIndex, companyName);
+        } else {
+          // All done, clear batch mode
+          localStorage.removeItem('batchChallans');
+          localStorage.removeItem('batchCompany');
+          setIsBatchMode(false);
+          setBatchChallans([]);
+          alert('All invoices generated successfully!');
+        }
+      }
     } catch (e) { 
       console.error(e); 
       alert('An unexpected error occurred');
+    }
+  };
+  
+  const handleSkipChallan = () => {
+    if (!isBatchMode || batchChallans.length === 0) return;
+    const nextIndex = currentBatchIndex + 1;
+    if (nextIndex < batchChallans.length) {
+      setCurrentBatchIndex(nextIndex);
+      loadChallanAtIndex(batchChallans, nextIndex, companyName);
+    } else {
+      localStorage.removeItem('batchChallans');
+      localStorage.removeItem('batchCompany');
+      setIsBatchMode(false);
+      setBatchChallans([]);
+      alert('Batch processing complete!');
+    }
+  };
+  
+  const handleExitBatch = () => {
+    const confirmed = confirm('Exit batch mode? Remaining challans will not be processed.');
+    if (confirmed) {
+      localStorage.removeItem('batchChallans');
+      localStorage.removeItem('batchCompany');
+      setIsBatchMode(false);
+      setBatchChallans([]);
+      setCurrentBatchIndex(0);
+      setChallanQuery('');
+      setRows([{ qty: '', description: '', rate: '', amount: '' }]);
     }
   };
 
@@ -129,8 +178,34 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   }, [challanQuery]);
 
   useEffect(()=>{
-    try{ const stored = localStorage.getItem('invoiceCompanyName'); if(stored) setCompanyName(stored); const storedBill = localStorage.getItem('latestBill'); if(storedBill) setBillNumber(storedBill);}catch{}
+    try{ 
+      const stored = localStorage.getItem('invoiceCompanyName'); 
+      if(stored) setCompanyName(stored); 
+      const storedBill = localStorage.getItem('latestBill'); 
+      if(storedBill) setBillNumber(storedBill);
+      
+      // Check for batch mode
+      const batchData = localStorage.getItem('batchChallans');
+      const batchCompany = localStorage.getItem('batchCompany');
+      if (batchData) {
+        const challans = JSON.parse(batchData);
+        if (Array.isArray(challans) && challans.length > 0) {
+          setBatchChallans(challans);
+          setIsBatchMode(true);
+          setCurrentBatchIndex(0);
+          if (batchCompany) setCompanyName(batchCompany);
+          // Load first challan
+          loadChallanAtIndex(challans, 0, batchCompany || stored || '');
+        }
+      }
+    }catch{}
   },[]);
+  
+  const loadChallanAtIndex = (challans: any[], index: number, company: string) => {
+    if (index < 0 || index >= challans.length) return;
+    const challan = challans[index];
+    handleSelectChallan(challan);
+  };
 
   const handleSelectChallan = (item: any) => {
     const challanNo = item?.challanno ?? item?.challan ?? '';
@@ -193,6 +268,40 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
         </div>
       )}
       <Nav href1='/Bill' name1='Generate' href2='/Bill/inquery' name2='Inquery' />
+      
+      {isBatchMode && batchChallans.length > 0 && (
+        <div className='w-full mt-4 bg-[var(--accent)]/20 border-2 border-[var(--accent)] rounded-xl p-4'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <h3 className='text-sm font-bold text-white'>Batch Mode: Processing Multiple Challans</h3>
+              <p className='text-xs text-white/70 mt-1'>
+                Challan {currentBatchIndex + 1} of {batchChallans.length}
+              </p>
+            </div>
+            <div className='flex gap-2'>
+              <button 
+                onClick={handleSkipChallan}
+                className='px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs rounded-md transition'
+              >
+                Skip This
+              </button>
+              <button 
+                onClick={handleExitBatch}
+                className='px-3 py-1.5 bg-red-500/80 hover:bg-red-500 text-white text-xs rounded-md transition'
+              >
+                Exit Batch
+              </button>
+            </div>
+          </div>
+          <div className='mt-3 bg-black/20 rounded-lg h-2 overflow-hidden'>
+            <div 
+              className='h-full bg-[var(--accent)] transition-all duration-300'
+              style={{ width: `${((currentBatchIndex + 1) / batchChallans.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+      
       <div className='w-full mt-8 space-y-4 sm:space-y-6'>
         {/* Company Name - Full width on all sizes */}
         <div className='w-full'>

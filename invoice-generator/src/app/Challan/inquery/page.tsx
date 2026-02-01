@@ -24,7 +24,8 @@
     const [filterCompanyDropdownOpen, setFilterCompanyDropdownOpen] = useState(false);
     const [itemQuery, setItemQuery] = useState("");
     const [showFilterModal, setShowFilterModal] = useState(false);
-    const [tempFilters, setTempFilters] = useState<{ challan: string; company: string; item: string; from: Date | null; to: Date | null }>({ challan: "", company: "", item: "", from: null, to: null });
+    const [excludeInvoiced, setExcludeInvoiced] = useState(false);
+    const [tempFilters, setTempFilters] = useState<{ challan: string; company: string; item: string; from: Date | null; to: Date | null; excludeInvoiced: boolean }>({ challan: "", company: "", item: "", from: null, to: null, excludeInvoiced: false });
     const [dateFrom, setDateFrom] = useState<Date | null>(null);
     const [dateTo, setDateTo] = useState<Date | null>(null);
     const [results, setResults] = useState<ChallanRow[]>([]);
@@ -39,9 +40,10 @@
       const fmt = (d: Date) => d.toISOString().split("T")[0];
       if (dateFrom) params.set("from", fmt(dateFrom));
       if (dateTo) params.set("to", fmt(dateTo));
+      if (excludeInvoiced) params.set("excludeInvoiced", "1");
       params.set("limit", "50");
       return params.toString();
-    }, [challanQuery, companyQuery, itemQuery, dateFrom, dateTo]);
+    }, [challanQuery, companyQuery, itemQuery, dateFrom, dateTo, excludeInvoiced]);
 
     useEffect(() => {
       const controller = new AbortController();
@@ -77,7 +79,7 @@
     }, []);
 
     const openFilterModal = () => {
-      setTempFilters({ challan: challanQuery, company: companyQuery, item: itemQuery, from: dateFrom, to: dateTo });
+      setTempFilters({ challan: challanQuery, company: companyQuery, item: itemQuery, from: dateFrom, to: dateTo, excludeInvoiced });
       setShowFilterModal(true);
     };
     const applyFilters = () => {
@@ -86,6 +88,7 @@
       setItemQuery(tempFilters.item);
       setDateFrom(tempFilters.from);
       setDateTo(tempFilters.to);
+      setExcludeInvoiced(Boolean(tempFilters.excludeInvoiced));
       setShowFilterModal(false);
     };
 
@@ -410,6 +413,19 @@
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
                   <DatePicker label="From" value={tempFilters.from} onChange={(d) => setTempFilters(f => ({ ...f, from: d }))} className="w-full" />
                   <DatePicker label="To" value={tempFilters.to} onChange={(d) => setTempFilters(f => ({ ...f, to: d }))} className="w-full" />
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                  <label className="flex items-center gap-3 text-sm text-white select-none">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(tempFilters.excludeInvoiced)}
+                      onChange={(e) => setTempFilters((f) => ({ ...f, excludeInvoiced: e.target.checked }))}
+                      className="h-4 w-4 accent-[var(--accent)]"
+                    />
+                    Hide challans that already have an invoice
+                  </label>
+                  <div className="mt-1 text-[11px] text-white/50">Shows only challans that still need an invoice.</div>
                 </div>
               </div>
               <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-black/40">
