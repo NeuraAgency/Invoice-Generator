@@ -10,12 +10,12 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  {
+    // Must be top-level so ignores apply before extended configs
+    ignores: ["**/src/types/supabase*.ts"],
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [
-      // Ignore generated or incompatible files
-      "src/types/supabase.ts",
-    ],
     rules: {
       // Relax strict rules to warnings to avoid blocking builds
       "@typescript-eslint/no-explicit-any": "warn",

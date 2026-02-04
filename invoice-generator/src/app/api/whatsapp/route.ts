@@ -36,6 +36,60 @@ function extractTextMessage(data: unknown): string {
   );
 }
 
+function extractFromMe(raw: unknown, body: unknown, data: unknown): boolean | null {
+  const r = raw as any;
+  const b = body as any;
+  const d = data as any;
+  const v =
+    d?.key?.fromMe ??
+    b?.data?.key?.fromMe ??
+    r?.data?.key?.fromMe ??
+    r?.body?.data?.key?.fromMe;
+  return typeof v === "boolean" ? v : null;
+}
+
+function extractPushName(raw: unknown, body: unknown, data: unknown): string | null {
+  const r = raw as any;
+  const b = body as any;
+  const d = data as any;
+  const v = d?.pushName ?? b?.pushName ?? b?.data?.pushName ?? r?.pushName ?? r?.body?.pushName;
+  return typeof v === "string" && v.trim() ? v : null;
+}
+
+function extractSender(raw: unknown, body: unknown, data: unknown): string | null {
+  const r = raw as any;
+  const b = body as any;
+  const d = data as any;
+
+  const candidates = [
+    // sometimes n8n/evolution sends sender at the envelope level
+    b?.sender,
+    r?.sender,
+    r?.body?.sender,
+    // group participant ids
+    d?.key?.participantAlt,
+    d?.key?.participant,
+    // other possible shapes
+    d?.sender,
+    b?.data?.sender,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c;
+  }
+
+  return null;
+}
+
+function normalizeSenderId(sender: string | null): string | null {
+  if (!sender) return null;
+  return String(sender)
+    .replace("@s.whatsapp.net", "")
+    .replace("@lid", "")
+    .replace("@g.us", "")
+    .trim();
+}
+
 export async function GET(_request: NextRequest) {
   try {
     const supabase = getSupabaseAdminClient();
@@ -92,6 +146,17 @@ export async function POST(request: NextRequest) {
     const contactId = normalizeContactId(remoteJid);
     const messageId: string = data?.key?.id || `msg_${Date.now()}`;
     const timestampIso = parseMaybeEpochSecondsToIso(data?.messageTimestamp);
+
+    const fromMe = extractFromMe(raw, body, data);
+    const pushName = extractPushName(raw, body, data);
+    let sender = extractSender(raw, body, data);
+
+    // Fallback: for direct chats, remoteJid is the other party.
+    if (!sender && typeof remoteJid === "string" && remoteJid.endsWith("@s.whatsapp.net")) {
+      sender = remoteJid;
+    }
+
+    sender = normalizeSenderId(sender);
     
     // Extract message text from any source
     let messageText = extractTextMessage(data);
@@ -127,20 +192,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save to whatsapp_messages - ONLY columns that exist in schema
+    // Save to whatsapp_messages (matches the new schema: sender/pushName/fromMe)
+    // Note: id is uuid with default, so we don't provide an id here.
     const row = {
-      id: messageId,
       contactId: contactId || null,
       message: messageText || null,
       event: eventRaw || null,
       instance: body?.instance ?? null,
       created_at: timestampIso || new Date().toISOString(),
-      status: false,
+      status: fromMe === true ? true : false,
+      sender,
+      pushName,
+      fromMe,
     };
 
-    const { error: insertError } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from("whatsapp_messages")
-      .upsert(row, { onConflict: "id" });
+      .insert(row)
+      .select("id")
+      .single();
 
     if (insertError) {
       console.error("Database insert error:", insertError);
@@ -150,6 +220,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
+        id: inserted?.id ?? null,
         messageId,
         contactId,
         saved: true
