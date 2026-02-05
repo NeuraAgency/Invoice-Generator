@@ -93,12 +93,25 @@ function normalizeSenderId(sender: string | null): string | null {
 export async function GET(_request: NextRequest) {
   try {
     const supabase = getSupabaseAdminClient();
+
+    const url = new URL(_request.url);
+    const contactId = url.searchParams.get("contactId");
+    const order = (url.searchParams.get("order") || "desc").toLowerCase();
+    const limitParam = url.searchParams.get("limit");
+    const limit = limitParam ? Number(limitParam) : null;
+    const ascending = order === "asc";
     
     // Fetch all messages from whatsapp_messages table
-    const { data, error } = await supabase
-      .from("whatsapp_messages")
-      .select("*")
-      .order("created_at", { ascending: false });
+    let q = supabase.from("whatsapp_messages").select("*");
+    if (contactId) {
+      q = q.eq("contactId", contactId);
+    }
+    q = q.order("created_at", { ascending });
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      q = q.limit(Math.min(10_000, Math.floor(limit)));
+    }
+
+    const { data, error } = await q;
 
     if (error) {
       console.error("Supabase error:", error);
@@ -108,7 +121,51 @@ export async function GET(_request: NextRequest) {
       );
     }
 
-    return NextResponse.json(data || []);
+    const messages = (data || []) as any[];
+
+    // Filter out "poor" duplicates (missing sender/pushName/fromMe) when a richer
+    // row exists for the same contactId+message within a short time window.
+    const parseMs = (v: any) => {
+      const ms = new Date(String(v || "")).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    };
+    const hasMeta = (m: any) =>
+      m?.sender != null || m?.pushName != null || typeof m?.fromMe === "boolean";
+
+    const sorted = [...messages].sort((a, b) => parseMs(a.created_at) - parseMs(b.created_at));
+    const result: any[] = [];
+    const lastIndexByKey = new Map<string, number>();
+    const lastRichByKey = new Map<string, { ms: number; index: number }>();
+    const WINDOW_MS = 30_000;
+
+    for (const m of sorted) {
+      const key = `${m?.contactId ?? ""}|${m?.message ?? ""}`;
+      const ms = parseMs(m?.created_at);
+      const rich = hasMeta(m);
+
+      const lastRich = lastRichByKey.get(key);
+      if (!rich && lastRich && Math.abs(ms - lastRich.ms) <= WINDOW_MS) {
+        continue;
+      }
+
+      const existingIndex = lastIndexByKey.get(key);
+      if (rich && existingIndex != null) {
+        const existing = result[existingIndex];
+        if (existing && !hasMeta(existing) && Math.abs(ms - parseMs(existing.created_at)) <= WINDOW_MS) {
+          result[existingIndex] = m;
+          lastRichByKey.set(key, { ms, index: existingIndex });
+          continue;
+        }
+      }
+
+      const newIndex = result.push(m) - 1;
+      lastIndexByKey.set(key, newIndex);
+      if (rich) lastRichByKey.set(key, { ms, index: newIndex });
+    }
+
+    // Return the requested order
+    result.sort((a, b) => (ascending ? parseMs(a.created_at) - parseMs(b.created_at) : parseMs(b.created_at) - parseMs(a.created_at)));
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error fetching WhatsApp messages:", error);
     return NextResponse.json(
@@ -194,17 +251,70 @@ export async function POST(request: NextRequest) {
 
     // Save to whatsapp_messages (matches the new schema: sender/pushName/fromMe)
     // Note: id is uuid with default, so we don't provide an id here.
+    const createdAtIso = timestampIso || new Date().toISOString();
     const row = {
       contactId: contactId || null,
       message: messageText || null,
       event: eventRaw || null,
       instance: body?.instance ?? null,
-      created_at: timestampIso || new Date().toISOString(),
+      created_at: createdAtIso,
       status: fromMe === true ? true : false,
       sender,
       pushName,
       fromMe,
     };
+
+    // Deduplicate: Evolution/n8n can deliver the same message twice (one "rich", one "poor").
+    // If a near-identical record exists, update it with missing fields instead of inserting a duplicate.
+    if (row.contactId && row.message) {
+      const baseMs = new Date(createdAtIso).getTime();
+      const ms = Number.isFinite(baseMs) ? baseMs : Date.now();
+      const windowStart = new Date(ms - 60_000).toISOString();
+      const windowEnd = new Date(ms + 60_000).toISOString();
+
+      let q = supabase
+        .from("whatsapp_messages")
+        .select("id, sender, pushName, fromMe, created_at")
+        .eq("contactId", row.contactId)
+        .eq("message", row.message)
+        .gte("created_at", windowStart)
+        .lte("created_at", windowEnd)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (row.sender) {
+        q = q.eq("sender", row.sender);
+      }
+
+      const { data: existing } = await q.maybeSingle();
+      if (existing?.id) {
+        const patch: any = {};
+        if (existing.sender == null && row.sender != null) patch.sender = row.sender;
+        if (existing.pushName == null && row.pushName != null) patch.pushName = row.pushName;
+        if (existing.fromMe == null && row.fromMe != null) patch.fromMe = row.fromMe;
+        if (Object.keys(patch).length > 0) {
+          const { error: updErr } = await supabase
+            .from("whatsapp_messages")
+            .update(patch)
+            .eq("id", existing.id);
+          if (updErr) {
+            console.error("Database update error (dedupe merge):", updErr);
+          }
+        }
+
+        return NextResponse.json(
+          {
+            success: true,
+            id: existing.id,
+            messageId,
+            contactId,
+            saved: true,
+            deduped: true,
+          },
+          { status: 200 }
+        );
+      }
+    }
 
     const { data: inserted, error: insertError } = await supabase
       .from("whatsapp_messages")

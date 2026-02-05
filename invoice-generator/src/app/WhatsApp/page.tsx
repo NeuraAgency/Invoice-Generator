@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tables } from '@/types/supabase';
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 
 type WhatsAppMessage = Tables<'whatsapp_messages'>;
 type Contact = Tables<'contacts'>;
@@ -15,7 +16,8 @@ const WhatsAppPage = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [groupedMessages, setGroupedMessages] = useState<GroupedMessages>({});
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -26,18 +28,45 @@ const WhatsAppPage = () => {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const pollingRef = useRef<number | null>(null);
+  const validContactIdsRef = useRef<Set<string>>(new Set());
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
+
+  const validContactIds = useMemo(() => {
+    const s = new Set(contacts.map(c => c.contactId).filter(Boolean) as string[]);
+    validContactIdsRef.current = s;
+    return s;
+  }, [contacts]);
+
   useEffect(() => {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  const selectedMessagesLen = selectedContact ? (groupedMessages[selectedContact]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!selectedContact) return;
+    const el = messageListRef.current;
+    if (!el) return;
+    // Keep view pinned to latest message
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [selectedContact, selectedMessagesLen]);
+
+  const fetchData = async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
-      setError(null);
+      const silent = Boolean(opts?.silent);
+      if (!silent) {
+        setInitialLoading(true);
+        setError(null);
+      } else {
+        setIsRefreshing(true);
+      }
       
       // Fetch both messages and contacts
       const [messagesRes, contactsRes] = await Promise.all([
-        fetch('/api/whatsapp'),
+        fetch('/api/whatsapp?order=desc&limit=2000'),
         fetch('/api/contacts')
       ]);
 
@@ -48,11 +77,57 @@ const WhatsAppPage = () => {
         throw new Error(`Failed to fetch contacts: ${contactsRes.status}`);
       }
       
-      const messagesData: WhatsAppMessage[] = await messagesRes.json();
+      const messagesDataRaw: WhatsAppMessage[] = await messagesRes.json();
       const contactsData: Contact[] = await contactsRes.json();
+
+      // Deduplicate: drop "poor" duplicates (sender/pushName/fromMe all null)
+      // when a richer row exists for the same contactId+message within 30s.
+      const parseMs = (v: string | null | undefined) => {
+        if (!v) return 0;
+        const ms = new Date(v).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+      };
+      const hasMeta = (m: WhatsAppMessage) => {
+        const anyMsg = m as any;
+        return anyMsg?.sender != null || anyMsg?.pushName != null || typeof anyMsg?.fromMe === 'boolean';
+      };
+      const sorted = [...messagesDataRaw].sort((a, b) => parseMs(a.created_at) - parseMs(b.created_at));
+      const deduped: WhatsAppMessage[] = [];
+      const lastIndexByKey = new Map<string, number>();
+      const lastRichMsByKey = new Map<string, number>();
+      const WINDOW_MS = 30_000;
+
+      for (const m of sorted) {
+        const key = `${m.contactId ?? ''}|${m.message ?? ''}`;
+        const ms = parseMs(m.created_at);
+        const rich = hasMeta(m);
+
+        const lastRichMs = lastRichMsByKey.get(key);
+        if (!rich && lastRichMs != null && Math.abs(ms - lastRichMs) <= WINDOW_MS) {
+          continue;
+        }
+
+        const existingIndex = lastIndexByKey.get(key);
+        if (rich && existingIndex != null) {
+          const existing = deduped[existingIndex];
+          if (existing && !hasMeta(existing) && Math.abs(ms - parseMs(existing.created_at)) <= WINDOW_MS) {
+            deduped[existingIndex] = m;
+            lastRichMsByKey.set(key, ms);
+            continue;
+          }
+        }
+
+        const newIndex = deduped.push(m) - 1;
+        lastIndexByKey.set(key, newIndex);
+        if (rich) lastRichMsByKey.set(key, ms);
+      }
+
+      const messagesData = deduped.sort((a, b) => parseMs(b.created_at) - parseMs(a.created_at));
       
       setMessages(messagesData);
       setContacts(contactsData);
+
+      knownMessageIdsRef.current = new Set(messagesData.map((m) => String(m.id)));
       
       // Create a Set of contactIds from the contacts table
       const validContactIds = new Set(
@@ -76,10 +151,45 @@ const WhatsAppPage = () => {
       
       setGroupedMessages(grouped);
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      // Only show a blocking error on initial load.
+      if (!opts?.silent) {
+        setError(err.message || 'Failed to load data');
+      }
       console.error('Error fetching data:', err);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const refreshLatestMessages = async () => {
+    try {
+      setIsRefreshing(true);
+      const res = await fetch('/api/whatsapp?order=desc&limit=80');
+      if (!res.ok) return;
+      const latest: WhatsAppMessage[] = await res.json();
+      // Merge from oldest->newest so ordering stays stable
+      for (const m of [...latest].reverse()) {
+        mergeMessageIntoState(m);
+      }
+    } catch (e) {
+      console.error('Error refreshing messages:', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const fetchContactMessages = async (contactId: string) => {
+    try {
+      const res = await fetch(`/api/whatsapp?contactId=${encodeURIComponent(contactId)}&order=asc&limit=400`);
+      if (!res.ok) return;
+      const data: WhatsAppMessage[] = await res.json();
+      setGroupedMessages(prev => ({
+        ...prev,
+        [contactId]: data,
+      }));
+    } catch (e) {
+      console.error('Error fetching contact messages:', e);
     }
   };
 
@@ -89,6 +199,9 @@ const WhatsAppPage = () => {
     
     // Mark messages as read when opening a contact
     if (isOpening) {
+      // Load in chronological order for the chat window
+      fetchContactMessages(contactId);
+
       try {
         await fetch('/api/whatsapp/mark-read', {
           method: 'POST',
@@ -167,7 +280,155 @@ const WhatsAppPage = () => {
     return contacts.find(c => c.contactId === contactId);
   };
 
-  if (loading) {
+  const mergeMessageIntoState = (m: WhatsAppMessage) => {
+    const contactId = m.contactId || null;
+    if (!contactId) return;
+    if (validContactIdsRef.current.size > 0 && !validContactIdsRef.current.has(contactId)) {
+      return;
+    }
+
+    const id = String(m.id);
+    const known = knownMessageIdsRef.current;
+
+    setGroupedMessages(prev => {
+      const existing = prev[contactId] ? [...prev[contactId]] : [];
+      const idx = existing.findIndex(x => String(x.id) === id);
+      if (idx >= 0) {
+        existing[idx] = { ...existing[idx], ...m };
+      } else {
+        existing.push(m);
+        known.add(id);
+      }
+      // Keep chronological order & avoid big lists
+      existing.sort((a, b) => parseDateMs(a.created_at) - parseDateMs(b.created_at));
+      const trimmed = existing.slice(-600);
+      return { ...prev, [contactId]: trimmed };
+    });
+  };
+
+  // Realtime updates (with polling fallback)
+  useEffect(() => {
+    let channel: any = null;
+    let didSubscribe = false;
+    let supabaseClient: ReturnType<typeof getSupabaseBrowserClient> | null = null;
+
+    const startPolling = () => {
+      if (pollingRef.current != null) return;
+      pollingRef.current = window.setInterval(() => {
+        refreshLatestMessages();
+      }, 10_000);
+    };
+
+    const stopPolling = () => {
+      if (pollingRef.current == null) return;
+      window.clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    };
+
+    try {
+      supabaseClient = getSupabaseBrowserClient();
+      channel = supabaseClient
+        .channel('whatsapp_messages_changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'whatsapp_messages' },
+          (payload: any) => {
+            if (payload?.eventType === 'INSERT' && payload?.new) {
+              mergeMessageIntoState(payload.new as WhatsAppMessage);
+              return;
+            }
+            if (payload?.eventType === 'UPDATE' && payload?.new) {
+              const updated = payload.new as WhatsAppMessage;
+              const cId = updated.contactId || null;
+              if (!cId) return;
+              setGroupedMessages(prev => {
+                const arr = prev[cId] ? [...prev[cId]] : [];
+                const idx = arr.findIndex(x => x.id === updated.id);
+                if (idx >= 0) arr[idx] = { ...arr[idx], ...updated };
+                else arr.push(updated);
+                arr.sort((a, b) => parseDateMs(a.created_at) - parseDateMs(b.created_at));
+                return { ...prev, [cId]: arr.slice(-600) };
+              });
+              return;
+            }
+          }
+        )
+        .subscribe((status: any) => {
+          if (status === 'SUBSCRIBED') {
+            didSubscribe = true;
+            stopPolling();
+          }
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            startPolling();
+          }
+        });
+
+      // If we don't successfully subscribe quickly, fall back to polling.
+      const t = window.setTimeout(() => {
+        if (!didSubscribe) startPolling();
+      }, 5000);
+
+      return () => {
+        try {
+          window.clearTimeout(t);
+        } catch {}
+        stopPolling();
+
+        try {
+          if (supabaseClient && channel) {
+            // removeChannel is async; swallow errors so unmount doesn't crash navigation
+            const p = supabaseClient.removeChannel(channel as any) as any;
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+          }
+        } catch {}
+      };
+    } catch (e) {
+      // Missing env vars or blocked realtime (RLS) -> polling fallback
+      startPolling();
+      return () => stopPolling();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const parseDateMs = (value: string | null | undefined) => {
+    if (!value) return 0;
+    const d = new Date(value);
+    const ms = d.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  };
+
+  type MessageSide = 'me' | 'them' | 'unknown';
+
+  const getMessageSide = (msg: WhatsAppMessage, contactId: string): MessageSide => {
+    const fromMe = (msg as any).fromMe as boolean | null | undefined;
+    if (typeof fromMe === 'boolean') return fromMe ? 'me' : 'them';
+
+    const sender = (msg as any).sender as string | null | undefined;
+    if (sender && msg.contactId && sender === msg.contactId) return 'them';
+
+    // If we can't confidently detect, keep it visually distinct.
+    return 'unknown';
+  };
+
+  const getDisplayName = (msg: WhatsAppMessage, side: MessageSide, contactId: string, contactInfo?: Contact) => {
+    if (side === 'me') return 'You';
+    const pushName = (msg as any).pushName as string | null | undefined;
+    const sender = (msg as any).sender as string | null | undefined;
+
+    if (pushName) return pushName;
+    if (sender) return sender;
+    return contactInfo?.company_name || contactInfo?.User_name || contactId;
+  };
+
+  const getImageUrlAndCaption = (message: string | null | undefined) => {
+    const raw = String(message || '');
+    const urls = raw.match(/https?:\/\/[^\s]+/g) || [];
+    const imageUrl = urls.find((u) => /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(u)) || null;
+    const caption = imageUrl ? raw.replace(imageUrl, '').trim() : raw;
+    return { imageUrl, caption };
+  };
+
+  if (initialLoading && Object.keys(groupedMessages).length === 0) {
     return (
       <div className="flex-1 min-h-screen bg-[var(--background)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -202,7 +463,14 @@ const WhatsAppPage = () => {
             <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight">
               WhatsApp <span className="text-[var(--accent)]">Messages</span>
             </h1>
-            <p className="text-white/40 mt-3 text-lg">Central hub for all incoming WhatsApp communications</p>
+            <p className="text-white/40 mt-3 text-lg flex items-center gap-2">
+              Central hub for all incoming WhatsApp communications
+              {isRefreshing && (
+                <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-1 rounded-full">
+                  Syncing…
+                </span>
+              )}
+            </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
@@ -227,9 +495,15 @@ const WhatsAppPage = () => {
         ) : (
           <div className="grid gap-6">
             {contactIds.map((contactId) => {
-              const contactMessages = groupedMessages[contactId];
+              const contactMessages = [...groupedMessages[contactId]].sort(
+                (a, b) => parseDateMs(a.created_at) - parseDateMs(b.created_at)
+              );
               const messageCount = contactMessages.length;
-              const unreadCount = contactMessages.filter(msg => (msg as any).status === false || (msg as any).status === null).length;
+              const unreadCount = contactMessages.filter(msg => {
+                const side = getMessageSide(msg, contactId);
+                if (side === 'me') return false;
+                return (msg as any).status === false || (msg as any).status === null;
+              }).length;
               const isSelected = selectedContact === contactId;
               const contactInfo = getContactInfo(contactId);
               
@@ -324,19 +598,17 @@ const WhatsAppPage = () => {
                   `}>
                     <div className="p-4 sm:p-6 bg-gradient-to-b from-white/[0.02] to-transparent">
                       {/* Chat Container */}
-                      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                      <div ref={isSelected ? messageListRef : undefined} className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                         {contactMessages.map((msg, index) => {
                           const currentDate = msg.created_at ? new Date(msg.created_at).toLocaleDateString() : null;
                           const previousDate = index > 0 && contactMessages[index - 1].created_at 
                             ? new Date(contactMessages[index - 1].created_at!).toLocaleDateString() 
                             : null;
                           const showDateHeader = currentDate && currentDate !== previousDate;
-                          
-                          // Check if message is an image URL
-                          const isImageUrl = msg.message && (
-                            msg.message.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) ||
-                            msg.message.startsWith('http') && msg.message.includes('image')
-                          );
+
+                          const side = getMessageSide(msg, contactId);
+                          const displayName = getDisplayName(msg, side, contactId, contactInfo);
+                          const { imageUrl, caption } = getImageUrlAndCaption(msg.message);
 
                           return (
                             <div key={msg.id}>
@@ -352,23 +624,51 @@ const WhatsAppPage = () => {
                               )}
                               
                               {/* Message Bubble */}
-                              <div className="flex items-end gap-3 animate-fadeIn">
-                                {/* Avatar */}
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
-                                  <span className="text-xs font-bold text-[var(--accent)]">
-                                    {(contactInfo?.company_name || contactId).slice(0, 1).toUpperCase()}
-                                  </span>
-                                </div>
-                                
+                              <div
+                                className={`flex items-end gap-3 animate-fadeIn ${
+                                  side === 'me' ? 'justify-end' : 'justify-start'
+                                }`}
+                              >
+                                {/* Avatar (only for non-me) */}
+                                {side !== 'me' && (
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-xs font-bold text-white/60">
+                                      {(displayName || contactId).slice(0, 1).toUpperCase()}
+                                    </span>
+                                  </div>
+                                )}
+
                                 {/* Message Content */}
-                                <div className="flex-1 max-w-[80%]">
-                                  <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm p-4 backdrop-blur-sm hover:bg-white/[0.07] transition-all duration-200 group">
-                                    {/* Message Text or Image */}
-                                    {isImageUrl ? (
+                                <div className={`flex-1 ${side === 'me' ? 'max-w-[85%]' : 'max-w-[80%]'}`}>
+                                  <div
+                                    className={`
+                                      border p-4 backdrop-blur-sm transition-all duration-200 group
+                                      ${side === 'me'
+                                        ? 'bg-[var(--accent)]/20 border-[var(--accent)]/30 text-white rounded-2xl rounded-br-sm'
+                                        : side === 'unknown'
+                                          ? 'bg-yellow-500/10 border-yellow-500/20 text-white rounded-2xl rounded-bl-sm'
+                                          : 'bg-white/5 border-white/10 text-white rounded-2xl rounded-bl-sm'
+                                      }
+                                    `}
+                                  >
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                      <span className={`text-xs font-semibold ${side === 'me' ? 'text-white/90' : 'text-white/60'}`}>
+                                        {displayName}
+                                      </span>
+                                      <span className={`text-[10px] font-mono ${side === 'me' ? 'text-white/70' : 'text-white/30'}`}>
+                                        {msg.created_at
+                                          ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          : 'N/A'}
+                                      </span>
+                                    </div>
+
+                                    {/* Message Text / Image */}
+                                    {imageUrl ? (
                                       <div className="space-y-2">
-                                        <img 
-                                          src={msg.message || ''} 
-                                          alt="Shared image" 
+                                        <img
+                                          src={imageUrl}
+                                          alt="Shared image"
                                           className="rounded-xl max-w-full h-auto border border-white/10"
                                           onError={(e) => {
                                             e.currentTarget.style.display = 'none';
@@ -377,25 +677,34 @@ const WhatsAppPage = () => {
                                           }}
                                         />
                                         <div className="hidden text-sm text-white/60 italic">
-                                          Failed to load image: {msg.message}
+                                          Failed to load image: {imageUrl}
                                         </div>
+                                        {caption && (
+                                          <p className={`text-sm leading-relaxed break-words ${side === 'me' ? 'text-white/90' : 'text-white/80'}`}>
+                                            {caption}
+                                          </p>
+                                        )}
                                       </div>
                                     ) : (
-                                      <p className="text-sm text-white/80 leading-relaxed break-words">
-                                        {msg.message || <span className="text-white/30 italic">No content</span>}
+                                      <p className={`text-sm leading-relaxed break-words ${side === 'me' ? 'text-white/95' : 'text-white/80'}`}>
+                                        {caption || <span className="text-white/30 italic">No content</span>}
                                       </p>
                                     )}
-                                    
-                                    {/* Timestamp */}
-                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
-                                      <span className="text-[10px] text-white/30 font-mono">
-                                        {msg.created_at
-                                          ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                          : 'N/A'}
-                                      </span>
+
+                                    {/* Footer */}
+                                    <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-white/5">
+                                      {side !== 'me' && ((msg as any).status === false || (msg as any).status === null) && (
+                                        <span className="text-[10px] text-[var(--accent)] font-semibold">Unread</span>
+                                      )}
+                                      {side === 'unknown' && (
+                                        <span className="text-[10px] text-yellow-300/70 font-semibold">Unknown sender</span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
+
+                                {/* Spacer avatar for alignment on 'me' */}
+                                {side === 'me' && <div className="w-8 h-8 flex-shrink-0" />}
                               </div>
                             </div>
                           );
