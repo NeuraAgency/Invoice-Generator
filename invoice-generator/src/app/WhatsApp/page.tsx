@@ -48,9 +48,9 @@ const WhatsAppPage = () => {
     if (!selectedContact) return;
     const el = messageListRef.current;
     if (!el) return;
-    // Keep view pinned to latest message
+    // Keep view pinned to latest message (latest is shown at the top)
     requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = 0;
     });
   }, [selectedContact, selectedMessagesLen]);
 
@@ -66,8 +66,8 @@ const WhatsAppPage = () => {
       
       // Fetch both messages and contacts
       const [messagesRes, contactsRes] = await Promise.all([
-        fetch('/api/whatsapp?order=desc&limit=2000'),
-        fetch('/api/contacts')
+        fetch('/api/whatsapp?order=desc&limit=2000', { cache: 'no-store' }),
+        fetch('/api/contacts', { cache: 'no-store' })
       ]);
 
       if (!messagesRes.ok) {
@@ -139,15 +139,18 @@ const WhatsAppPage = () => {
         msg.contactId && validContactIds.has(msg.contactId)
       );
       
-      // Group filtered messages by contactId
-      const grouped = filteredMessages.reduce((acc: GroupedMessages, msg) => {
-        const contactId = msg.contactId || 'Unknown';
-        if (!acc[contactId]) {
-          acc[contactId] = [];
-        }
-        acc[contactId].push(msg);
-        return acc;
-      }, {});
+      // Group filtered messages by contactId, but ensure every contactId in the
+      // contacts table is present (even if it has 0 messages).
+      const grouped: GroupedMessages = {};
+      for (const c of contactsData) {
+        if (c.contactId) grouped[c.contactId] = [];
+      }
+      for (const msg of filteredMessages) {
+        const contactId = msg.contactId;
+        if (!contactId) continue;
+        if (!grouped[contactId]) grouped[contactId] = [];
+        grouped[contactId].push(msg);
+      }
       
       setGroupedMessages(grouped);
     } catch (err: any) {
@@ -181,7 +184,7 @@ const WhatsAppPage = () => {
 
   const fetchContactMessages = async (contactId: string) => {
     try {
-      const res = await fetch(`/api/whatsapp?contactId=${encodeURIComponent(contactId)}&order=asc&limit=400`);
+      const res = await fetch(`/api/whatsapp?contactId=${encodeURIComponent(contactId)}&order=desc&limit=400`);
       if (!res.ok) return;
       const data: WhatsAppMessage[] = await res.json();
       setGroupedMessages(prev => ({
@@ -453,7 +456,7 @@ const WhatsAppPage = () => {
     );
   }
 
-  const contactIds = Object.keys(groupedMessages);
+  const panelContacts = [...contacts].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
 
   return (
     <div className="flex-1 h-screen overflow-y-auto bg-[var(--background)] transition-all duration-300">
@@ -484,7 +487,7 @@ const WhatsAppPage = () => {
           </button>
         </header>
         
-        {contactIds.length === 0 ? (
+        {panelContacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white/5 border border-white/10 rounded-3xl backdrop-blur-sm">
             <svg className="w-20 h-20 text-white/10 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -494,22 +497,24 @@ const WhatsAppPage = () => {
           </div>
         ) : (
           <div className="grid gap-6">
-            {contactIds.map((contactId) => {
-              const contactMessages = [...groupedMessages[contactId]].sort(
-                (a, b) => parseDateMs(a.created_at) - parseDateMs(b.created_at)
+            {panelContacts.map((contact) => {
+              const contactId = contact.contactId;
+              const contactMessages = [...(contactId ? (groupedMessages[contactId] ?? []) : [])].sort(
+                (a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)
               );
               const messageCount = contactMessages.length;
               const unreadCount = contactMessages.filter(msg => {
-                const side = getMessageSide(msg, contactId);
+                const side = getMessageSide(msg, contactId || '');
                 if (side === 'me') return false;
                 return (msg as any).status === false || (msg as any).status === null;
               }).length;
-              const isSelected = selectedContact === contactId;
-              const contactInfo = getContactInfo(contactId);
+              const isSelected = Boolean(contactId) && selectedContact === contactId;
+              const contactInfo = contact;
+              const cardKey = contactId || `contact-row-${contact.id}`;
               
               return (
                 <div 
-                  key={contactId} 
+                  key={cardKey} 
                   className={`
                     group overflow-hidden rounded-2xl border transition-all duration-300
                     ${isSelected 
@@ -519,7 +524,10 @@ const WhatsAppPage = () => {
                 >
                   {/* Contact Header */}
                   <div
-                    onClick={() => handleContactClick(contactId)}
+                    onClick={() => {
+                      if (!contactId) return;
+                      handleContactClick(contactId);
+                    }}
                     className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4"
                   >
                     <div className="flex items-center gap-4 sm:gap-6">
@@ -527,7 +535,7 @@ const WhatsAppPage = () => {
                          relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-xl font-bold transition-all duration-300
                          ${isSelected ? 'bg-[var(--accent)] text-white scale-110' : 'bg-white/10 text-white/60'}
                        `}>
-                         {(contactInfo?.company_name || contactId).slice(0, 2).toUpperCase()}
+                         {(contactInfo?.company_name || contactInfo?.contactId || contactInfo?.contact || '??').slice(0, 2).toUpperCase()}
                          {unreadCount > 0 && !isSelected && (
                            <div className="absolute -top-1 -right-1 bg-[var(--accent)] text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-black shadow-lg">
                              {unreadCount}
@@ -558,7 +566,7 @@ const WhatsAppPage = () => {
                             )}
                             {!contactInfo?.company_name && (
                               <span className="text-xs text-white/40 italic">
-                                ID: {contactId}
+                                ID: {contactId || `Row #${contact.id}`}
                               </span>
                             )}
                          </div>
@@ -606,8 +614,8 @@ const WhatsAppPage = () => {
                             : null;
                           const showDateHeader = currentDate && currentDate !== previousDate;
 
-                          const side = getMessageSide(msg, contactId);
-                          const displayName = getDisplayName(msg, side, contactId, contactInfo);
+                          const side = getMessageSide(msg, contactId || '');
+                          const displayName = getDisplayName(msg, side, contactId || '', contactInfo);
                           const { imageUrl, caption } = getImageUrlAndCaption(msg.message);
 
                           return (
