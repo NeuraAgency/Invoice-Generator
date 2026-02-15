@@ -2,6 +2,13 @@
 import Nav from "@/app/components/nav";
 import React, { useEffect, useState } from "react";
 
+const CHALLAN_COMPANY_OPTIONS = [
+  "Kassim Textile Mills Limited",
+  "Union Fabrics Private Limited",
+] as const;
+
+type ChallanCompanySelection = (typeof CHALLAN_COMPANY_OPTIONS)[number] | "custom";
+
 interface RowData {
   qty: string;
   description: string;
@@ -83,6 +90,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
   // NEW: manual GatePass and Company Name
   const [manualGp, setManualGp] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("Kassim Textile Mills Limited");
+  const [companySelection, setCompanySelection] = useState<ChallanCompanySelection>("Kassim Textile Mills Limited");
+  const [customCompanyName, setCustomCompanyName] = useState<string>("");
   const [documentDate, setDocumentDate] = useState<string>(new Date().toISOString().split("T")[0]);
   // NEW: sample returned flag (shared with preview via localStorage)
   const [sampleReturned, setSampleReturned] = useState<boolean>(false);
@@ -103,6 +112,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
     if (initialMeta.companyName != null) {
       const val = String(initialMeta.companyName);
       setCompanyName(val);
+
+      if ((CHALLAN_COMPANY_OPTIONS as readonly string[]).includes(val)) {
+        setCompanySelection(val as (typeof CHALLAN_COMPANY_OPTIONS)[number]);
+      } else {
+        setCompanySelection("custom");
+        setCustomCompanyName(val);
+      }
       try {
         localStorage.setItem('invoiceCompanyName', val);
       } catch {}
@@ -117,6 +133,13 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
       } catch {}
     }
   }, [initialMeta?.challanId]);
+
+  const persistCompanyName = (val: string) => {
+    setCompanyName(val);
+    try {
+      localStorage.setItem('invoiceCompanyName', val);
+    } catch {}
+  };
 
   useEffect(() => {
     if (!gpQuery) {
@@ -352,21 +375,53 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
 
           {/* COMPANY NAME */}
           <div className="w-full">
-            <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-full h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
-              <h2 className="font-semibold text-xs text-white">Enter Company Name</h2>
-              <input
-                type="text"
-                value={companyName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCompanyName(val);
-                  try {
-                    localStorage.setItem('invoiceCompanyName', val);
-                  } catch {}
-                }}
-                className="my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white"
-                placeholder="Company Name"
-              />
+            <div className="bg-white/5 border-[1px] border-white/10 rounded-md p-3 w-full min-h-20 flex flex-col justify-start transition-all duration-150 focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] focus-within:ring-opacity-20 focus-within:shadow-[0_6px_18px_rgba(255,165,0,0.12)]">
+              <h2 className="font-semibold text-xs text-white">Company Name</h2>
+              <div className="relative mt-2">
+                <select
+                  value={companySelection}
+                  onChange={(e) => {
+                    const selection = e.target.value as ChallanCompanySelection;
+                    setCompanySelection(selection);
+
+                    if (selection === "custom") {
+                      persistCompanyName(customCompanyName);
+                      return;
+                    }
+
+                    persistCompanyName(selection);
+                  }}
+                  className="w-full text-xs bg-black/40 border border-white/20 rounded-md px-3 py-2 pr-10 text-white outline-none appearance-none cursor-pointer transition-colors focus:border-[var(--accent)]"
+                >
+                  {CHALLAN_COMPANY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt} className="text-black">
+                      {opt}
+                    </option>
+                  ))}
+                  <option value="custom" className="text-black">
+                    Custom…
+                  </option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-white/70">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z" />
+                  </svg>
+                </div>
+              </div>
+
+              {companySelection === "custom" && (
+                <input
+                  type="text"
+                  value={customCompanyName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomCompanyName(val);
+                    persistCompanyName(val);
+                  }}
+                  className="mt-2 w-full text-xs bg-black/40 border border-white/20 rounded-md px-3 py-2 text-white outline-none transition-colors focus:border-[var(--accent)]"
+                  placeholder="Enter custom company name"
+                />
+              )}
             </div>
           </div>
         </div>

@@ -641,7 +641,7 @@ const WhatsAppPage = () => {
                                 {side !== 'me' && (
                                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
                                     <span className="text-xs font-bold text-white/60">
-                                      {(displayName || contactId).slice(0, 1).toUpperCase()}
+                                      {String(displayName ?? contactId ?? "?").trim().charAt(0).toUpperCase()}
                                     </span>
                                   </div>
                                 )}
