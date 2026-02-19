@@ -113,6 +113,12 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
           setBillNumber(billStr);
         } catch {} 
       }
+
+      // Trigger a one-time auto-download in the Preview once the PDF is regenerated.
+      try {
+        const billForDownload = String(billStr || billNumber || '').trim();
+        if (billForDownload) localStorage.setItem('autoDownloadBillPdf', billForDownload);
+      } catch {}
       setSuccessMsg(`Invoice ${billStr || ''} generated and saved successfully!`);
       setTimeout(() => setSuccessMsg(null), 5000);
       onConfirm();

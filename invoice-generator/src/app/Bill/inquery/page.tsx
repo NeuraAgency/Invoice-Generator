@@ -23,8 +23,9 @@ const InvoiceInqueryPage = () => {
 	const [billQuery, setBillQuery] = useState("");
 	const [dateFrom, setDateFrom] = useState<Date | null>(null);
 	const [dateTo, setDateTo] = useState<Date | null>(null);
+	const [paidFilter, setPaidFilter] = useState<"all" | "paid" | "unpaid">("all");
 	const [showFilterModal, setShowFilterModal] = useState(false);
-	const [tempFilters, setTempFilters] = useState<{ bill: string; challan: string; item: string; from: Date | null; to: Date | null }>({ bill: "", challan: "", item: "", from: null, to: null });
+	const [tempFilters, setTempFilters] = useState<{ bill: string; challan: string; item: string; from: Date | null; to: Date | null; paid: "all" | "paid" | "unpaid" }>({ bill: "", challan: "", item: "", from: null, to: null, paid: "all" });
 	const [challanQuery, setChallanQuery] = useState("");
 	const [itemQuery, setItemQuery] = useState("");
 	const [results, setResults] = useState<InvoiceRow[]>([]);
@@ -32,9 +33,37 @@ const InvoiceInqueryPage = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [pendingBills, setPendingBills] = useState<Set<string | number>>(new Set());
 	const [showPrintModal, setShowPrintModal] = useState(false);
+	const [printPaidFilter, setPrintPaidFilter] = useState<"all" | "paid" | "unpaid">("all");
 	const [selectionRange, setSelectionRange] = useState({ from: "", to: "" });
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
 	const [newDateDt, setNewDateDt] = useState<Date | null>(null);
+
+	const printRows = useMemo(() => {
+		if (printPaidFilter === "paid") return results.filter((r) => r?.status === true);
+		if (printPaidFilter === "unpaid") return results.filter((r) => r?.status === false || r?.status == null);
+		return results;
+	}, [results, printPaidFilter]);
+
+	const selectedPrintTotal = useMemo(() => {
+		const toNum = (v: string) => {
+			if (!v) return 0;
+			const n = parseFloat(String(v).replace(/,/g, ""));
+			return Number.isFinite(n) ? n : 0;
+		};
+		let sum = 0;
+		for (const row of results) {
+			const id = String(row.billno);
+			if (!selectedBillIds.has(id)) continue;
+			const items = toRowData(row.Description);
+			const total = items.reduce((s, item) => {
+				const a = toNum(item.amount);
+				if (a > 0) return s + a;
+				return s + toNum(item.qty) * toNum(item.rate);
+			}, 0);
+			sum += total;
+		}
+		return sum;
+	}, [results, selectedBillIds]);
 
 	// Generate Bill Modal state
 	const [showGenerateBillModal, setShowGenerateBillModal] = useState(false);
@@ -49,21 +78,23 @@ const InvoiceInqueryPage = () => {
 		if (billQuery.trim()) params.set("bill", billQuery.trim());
 		if (challanQuery.trim()) params.set("challan", challanQuery.trim());
 		if (itemQuery.trim()) params.set("item", itemQuery.trim());
+		if (paidFilter !== "all") params.set("paid", paidFilter === "paid" ? "1" : "0");
 		const fmt = (d: Date) => d.toISOString().split("T")[0];
 		if (dateFrom) params.set("from", fmt(dateFrom));
 		if (dateTo) params.set("to", fmt(dateTo));
 		params.set("limit", "50");
 		return params.toString();
-	}, [billQuery, challanQuery, itemQuery, dateFrom, dateTo]);
+	}, [billQuery, challanQuery, itemQuery, paidFilter, dateFrom, dateTo]);
 
 	const openFilterModal = () => {
-		setTempFilters({ bill: billQuery, challan: challanQuery, item: itemQuery, from: dateFrom, to: dateTo });
+		setTempFilters({ bill: billQuery, challan: challanQuery, item: itemQuery, from: dateFrom, to: dateTo, paid: paidFilter });
 		setShowFilterModal(true);
 	};
 	const applyFilters = () => {
 		setBillQuery(tempFilters.bill);
 		setChallanQuery(tempFilters.challan);
 		setItemQuery(tempFilters.item);
+		setPaidFilter(tempFilters.paid);
 		setDateFrom(tempFilters.from);
 		setDateTo(tempFilters.to);
 		setShowFilterModal(false);
@@ -252,13 +283,13 @@ const InvoiceInqueryPage = () => {
 		}
 	};
 
-	const toItems = (desc: any) => {
+	function toItems(desc: any) {
 		if (Array.isArray(desc)) return desc;
 		if (!desc) return [];
 		return [desc];
-	};
+	}
 
-	const toRowData = (raw: any) => {
+	function toRowData(raw: any) {
 		const arr = toItems(raw);
 		return arr.map((d: any) => {
 			const qty = String(d?.qty ?? d?.quantity ?? "");
@@ -273,7 +304,7 @@ const InvoiceInqueryPage = () => {
 			// Return both rate (per-piece) and original amount when available
 			return { qty, description, rate: perPiece, amount: d?.amount ?? "" };
 		});
-	};
+	}
 
 	const generateInvoicePdfBytes = async (
 		rows: {
@@ -530,7 +561,7 @@ const InvoiceInqueryPage = () => {
 		const to = parseBill(selectionRange.to);
 		if (!from || !to) return;
 		const newSelected = new Set(selectedBillIds);
-		results.forEach((row) => {
+		printRows.forEach((row) => {
 			const current = parseBill(String(row.billno));
 			if (current && current.prefix === from.prefix && current.num >= from.num && current.num <= to.num) {
 				newSelected.add(String(row.billno));
@@ -836,6 +867,36 @@ const InvoiceInqueryPage = () => {
 								<button onClick={applyRange} className="bg-[var(--accent)] text-black px-6 py-2.5 rounded-lg text-xs font-bold hover:opacity-90 transition active:scale-95">Apply Range</button>
 							</div>
 
+							<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
+								<div>
+									<div className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Paid</div>
+									<div className="mt-2 flex items-center gap-2">
+										<button
+											type="button"
+											onClick={() => setPrintPaidFilter("all")}
+											className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${printPaidFilter === "all" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+										>
+											All
+										</button>
+										<button
+											type="button"
+											onClick={() => setPrintPaidFilter("paid")}
+											className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${printPaidFilter === "paid" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+										>
+											Paid
+										</button>
+										<button
+											type="button"
+											onClick={() => setPrintPaidFilter("unpaid")}
+											className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${printPaidFilter === "unpaid" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+										>
+											Unpaid
+										</button>
+									</div>
+								</div>
+								<div className="text-xs text-white/60">Showing {printRows.length} bills</div>
+							</div>
+
 							<div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
 								<DatePicker label="New Date" value={newDateDt} onChange={setNewDateDt} className="w-full" />
 								<div className="col-span-2 flex items-center gap-3">
@@ -848,7 +909,7 @@ const InvoiceInqueryPage = () => {
 									<thead className="bg-[var(--accent)] text-black font-bold">
 										<tr>
 											<th className="px-4 py-3 w-10">
-												<input type="checkbox" onChange={e => setSelectedBillIds(e.target.checked ? new Set(results.map(r => String(r.billno))) : new Set())} checked={selectedBillIds.size === results.length && results.length > 0} className="rounded accent-black" />
+												<input type="checkbox" onChange={e => setSelectedBillIds(e.target.checked ? new Set(printRows.map(r => String(r.billno))) : new Set())} checked={printRows.length > 0 && printRows.every(r => selectedBillIds.has(String(r.billno)))} className="rounded accent-black" />
 											</th>
 											<th className="px-4 py-3 w-12">S.No</th>
 											<th className="px-4 py-3">Bill No</th>
@@ -858,7 +919,7 @@ const InvoiceInqueryPage = () => {
 										</tr>
 									</thead>
 									<tbody className="divide-y divide-white/5 bg-black/20">
-										{results.map((row, idx) => {
+										{printRows.map((row, idx) => {
 											const items = toRowData(row.Description);
 											const toNum = (v: string) => { if (!v) return 0; const n = parseFloat(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
 											const total = items.reduce((sum, item) => {
@@ -891,6 +952,8 @@ const InvoiceInqueryPage = () => {
 						<div className="p-6 border-t border-white/10 flex justify-between items-center bg-black/40">
 							<div className="text-xs text-white/50">
 								<span className="text-[var(--accent)] font-bold">{selectedBillIds.size}</span> bills selected
+								<span className="mx-2 text-white/20">•</span>
+								Total: <span className="text-[var(--accent)] font-bold">Rs. {selectedPrintTotal.toFixed(2)}</span>
 							</div>
 							<div className="flex gap-3">
 								<button onClick={() => setShowPrintModal(false)} className="px-5 py-2 rounded-lg text-xs font-bold text-white/70 hover:text-white transition">Cancel</button>
@@ -1051,9 +1114,35 @@ const InvoiceInqueryPage = () => {
 										<label className="block text-[11px] font-medium text-white">Challan Number</label>
 										<input type="text" value={tempFilters.challan} onChange={(e) => setTempFilters(f => ({ ...f, challan: e.target.value }))} className="mt-1 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="e.g. 34 or 00034" />
 									</div>
-									<div className="md:col-span-2">
+									<div>
 										<label className="block text-[11px] font-medium text-white">Item Name</label>
 										<input type="text" value={tempFilters.item} onChange={(e) => setTempFilters(f => ({ ...f, item: e.target.value }))} className="mt-1 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white placeholder:text-white/60" placeholder="Smart search: words and typos OK" />
+									</div>
+									<div>
+										<label className="block text-[11px] font-medium text-white">Paid</label>
+										<div className="mt-2 flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => setTempFilters(f => ({ ...f, paid: "all" }))}
+												className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${tempFilters.paid === "all" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+											>
+												All
+											</button>
+											<button
+												type="button"
+												onClick={() => setTempFilters(f => ({ ...f, paid: "paid" }))}
+												className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${tempFilters.paid === "paid" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+											>
+												Paid
+											</button>
+											<button
+												type="button"
+												onClick={() => setTempFilters(f => ({ ...f, paid: "unpaid" }))}
+												className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${tempFilters.paid === "unpaid" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white hover:bg-white/10"}`}
+											>
+												Unpaid
+											</button>
+										</div>
 									</div>
 									<div className="grid grid-cols-2 gap-3 md:col-span-2">
 										<DatePicker label="From" value={tempFilters.from} onChange={(d) => setTempFilters(f => ({ ...f, from: d }))} />

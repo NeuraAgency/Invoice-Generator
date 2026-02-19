@@ -34,6 +34,34 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       const { width, height } = page.getSize();
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const fitTextToWidth = (
+        text: string,
+        maxWidth: number,
+        fnt: typeof font,
+        fontSize: number
+      ) => {
+        const raw = String(text ?? "");
+        const t = raw.replace(/\s+/g, " ").trim();
+        if (!t) return "";
+        if (maxWidth <= 0) return "";
+        if (fnt.widthOfTextAtSize(t, fontSize) <= maxWidth) return t;
+
+        const ellipsis = "...";
+        const ellipsisWidth = fnt.widthOfTextAtSize(ellipsis, fontSize);
+        if (ellipsisWidth > maxWidth) return "";
+
+        let lo = 0;
+        let hi = t.length;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          const candidate = t.slice(0, mid);
+          const w = fnt.widthOfTextAtSize(candidate, fontSize);
+          if (w + ellipsisWidth <= maxWidth) lo = mid;
+          else hi = mid - 1;
+        }
+        return t.slice(0, Math.max(0, lo)) + ellipsis;
+      };
       const drawText = (
         t: string,
         x: number,
@@ -193,19 +221,34 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
           const qtyNum = toNum(r.qty);
           const rateNum = toNum(r.rate ?? r.amount ?? "");
           const lineTotal = qtyNum * rateNum;
-          drawText(r.qty || "", tableLeft + 10, cursorY, 10);
-          drawText(r.description || "", tableLeft + colQtyW + 10, cursorY, 10);
+          const cellPadding = 10;
+          const qtyText = fitTextToWidth(r.qty || "", colQtyW - cellPadding * 2, font, 10);
+          const descText = fitTextToWidth(
+            r.description || "",
+            colDescW - cellPadding * 2,
+            font,
+            9
+          );
+          drawText(qtyText, tableLeft + cellPadding, cursorY, 10);
+          drawText(descText, tableLeft + colQtyW + cellPadding, cursorY, 9);
           // Rate column
-          drawText(
+          const rateText = fitTextToWidth(
             rateNum ? rateNum.toFixed(2) : r.rate || r.amount || "",
-            tableLeft + colQtyW + colDescW + 10,
-            cursorY,
+            colRateW - cellPadding * 2,
+            font,
             10
           );
+          drawText(rateText, tableLeft + colQtyW + colDescW + cellPadding, cursorY, 10);
           // Amount column (qty * rate)
-          drawText(
+          const amountText = fitTextToWidth(
             lineTotal ? lineTotal.toFixed(2) : "",
-            tableLeft + colQtyW + colDescW + colRateW + 10,
+            colAmtW - cellPadding * 2,
+            font,
+            10
+          );
+          drawText(
+            amountText,
+            tableLeft + colQtyW + colDescW + colRateW + cellPadding,
             cursorY,
             10
           );
@@ -254,6 +297,24 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       });
     };
   }, [rows, bill, invoiceChallan, invoiceGP, invoicePO]);
+
+  useEffect(() => {
+    if (!pdfUrl) return;
+    try {
+      const shouldDownloadFor = localStorage.getItem('autoDownloadBillPdf');
+      if (!shouldDownloadFor) return;
+      if (String(shouldDownloadFor).trim() !== String(bill).trim()) return;
+
+      const a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = `Invoice-${bill}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      localStorage.removeItem('autoDownloadBillPdf');
+    } catch {}
+  }, [pdfUrl, bill]);
   return (
     <div className="w-full h-screen flex flex-col items-start gap-4">
       <div className="w-full h-[580px] rounded-xl shadow-lg overflow-hidden bg-white">

@@ -5,8 +5,18 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdminClient()
 
     if (req.method === 'GET') {
-      const { bill, challan, limit, item, from, to, industry } = req.query
+      const { bill, challan, limit, item, from, to, industry, paid } = req.query
       const lim = Number(limit) || 50
+
+      const parsePaid = (v) => {
+        if (v == null) return null
+        const s = String(v).trim().toLowerCase()
+        if (!s) return null
+        if (s === '1' || s === 'true' || s === 'paid' || s === 'yes') return true
+        if (s === '0' || s === 'false' || s === 'unpaid' || s === 'no') return false
+        return null
+      }
+      const paidBool = parsePaid(paid)
 
       // Try to include DeliveryChallan info so we can see the Industry/Company.
       // If that join/select fails for any reason, fall back to a simple invoice select
@@ -41,6 +51,13 @@ export default async function handler(req, res) {
           query = query.lte('created_at', dt.toISOString())
         }
 
+        // Paid filter (status column): unpaid includes false OR null
+        if (paidBool === true) {
+          query = query.eq('status', true)
+        } else if (paidBool === false) {
+          query = query.or('status.eq.false,status.is.null')
+        }
+
         const { data, error } = await query.order('billno', { ascending: false }).limit(lim)
         if (error) throw error
         // In-memory filters: industry and item smart match
@@ -48,6 +65,11 @@ export default async function handler(req, res) {
         if (industry && typeof industry === 'string') {
           const inorm = String(industry).trim().toLowerCase()
           resultData = resultData.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+        }
+        if (paidBool === true) {
+          resultData = resultData.filter(r => r?.status === true)
+        } else if (paidBool === false) {
+          resultData = resultData.filter(r => r?.status === false || r?.status == null)
         }
         // Smart item filter on Description (token + fuzzy)
         if (item && typeof item === 'string') {
@@ -132,6 +154,13 @@ export default async function handler(req, res) {
             fallback = fallback.lte('created_at', dt.toISOString())
           }
 
+          // Paid filter (status column): unpaid includes false OR null
+          if (paidBool === true) {
+            fallback = fallback.eq('status', true)
+          } else if (paidBool === false) {
+            fallback = fallback.or('status.eq.false,status.is.null')
+          }
+
           const { data: fd, error: ferr } = await fallback.order('billno', { ascending: false }).limit(lim)
           if (ferr) {
             console.error('/api/invoice fallback query error:', ferr)
@@ -141,6 +170,11 @@ export default async function handler(req, res) {
           if (industry && typeof industry === 'string') {
             const inorm = String(industry).trim().toLowerCase()
             resultFd = resultFd.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+          }
+          if (paidBool === true) {
+            resultFd = resultFd.filter(r => r?.status === true)
+          } else if (paidBool === false) {
+            resultFd = resultFd.filter(r => r?.status === false || r?.status == null)
           }
           if (item && typeof item === 'string') {
             const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
