@@ -317,6 +317,34 @@ const InvoiceInqueryPage = () => {
 		const { width, height } = page.getSize();
 		const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 		const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+		const fitTextToWidth = (
+			text: string,
+			maxWidth: number,
+			fnt: typeof font,
+			fontSize: number
+		) => {
+			const raw = String(text ?? "");
+			const t = raw.replace(/\s+/g, " ").trim();
+			if (!t) return "";
+			if (maxWidth <= 0) return "";
+			if (fnt.widthOfTextAtSize(t, fontSize) <= maxWidth) return t;
+
+			const ellipsis = "...";
+			const ellipsisWidth = fnt.widthOfTextAtSize(ellipsis, fontSize);
+			if (ellipsisWidth > maxWidth) return "";
+
+			let lo = 0;
+			let hi = t.length;
+			while (lo < hi) {
+				const mid = Math.ceil((lo + hi) / 2);
+				const candidate = t.slice(0, mid);
+				const w = fnt.widthOfTextAtSize(candidate, fontSize);
+				if (w + ellipsisWidth <= maxWidth) lo = mid;
+				else hi = mid - 1;
+			}
+			return t.slice(0, Math.max(0, lo)) + ellipsis;
+		};
 		const drawText = (t: string, x: number, y: number, s = 12, b = false, c = rgb(0, 0, 0)) => {
 			page.drawText(t, {
 				x,
@@ -391,12 +419,23 @@ const InvoiceInqueryPage = () => {
 				const qtyNum = toNum(r.qty);
 				const rateNum = toNum(r.rate ?? r.amount ?? "");
 				const lineTotal = qtyNum * rateNum;
-				drawText(r.qty || "", tableLeft + 10, cursorY, 10);
-				drawText(r.description || "", tableLeft + colQtyW + 10, cursorY, 10);
+				const cellPadding = 10;
+				const qtyText = fitTextToWidth(r.qty || "", colQtyW - cellPadding * 2, font, 10);
+				const descText = fitTextToWidth(r.description || "", colDescW - cellPadding * 2, font, 9);
+				const rateText = fitTextToWidth(
+					rateNum ? rateNum.toFixed(2) : r.rate ?? r.amount ?? "",
+					colRateW - cellPadding * 2,
+					font,
+					10
+				);
+				const amountText = fitTextToWidth(lineTotal ? lineTotal.toFixed(2) : "", colAmtW - cellPadding * 2, font, 10);
+
+				drawText(qtyText, tableLeft + cellPadding, cursorY, 10);
+				drawText(descText, tableLeft + colQtyW + cellPadding, cursorY, 9);
 				// Rate column
-				drawText(rateNum ? rateNum.toFixed(2) : r.rate ?? r.amount ?? "", tableLeft + colQtyW + colDescW + 10, cursorY, 10);
+				drawText(rateText, tableLeft + colQtyW + colDescW + cellPadding, cursorY, 10);
 				// Amount column (qty * rate)
-				drawText(lineTotal ? lineTotal.toFixed(2) : "", tableLeft + colQtyW + colDescW + colRateW + 10, cursorY, 10);
+				drawText(amountText, tableLeft + colQtyW + colDescW + colRateW + cellPadding, cursorY, 10);
 			}
 			page.drawLine({ start: { x: tableLeft, y: cursorY - 6 }, end: { x: tableRight, y: cursorY - 6 }, color: rgb(0, 0, 0), thickness: 0.5 });
 			cursorY -= rowH;
