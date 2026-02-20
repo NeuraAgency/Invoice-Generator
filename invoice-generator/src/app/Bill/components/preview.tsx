@@ -78,6 +78,33 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
           color: c,
         });
       };
+
+      const drawLabelMultiline = (
+        label: string,
+        value: string,
+        x: number,
+        y: number,
+        size: number,
+        lineGap: number
+      ) => {
+        const parts = String(value ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        const prefix = `${label}: `;
+        const indent = font.widthOfTextAtSize(prefix, size);
+
+        if (parts.length === 0) {
+          drawText(`${label}:`, x, y, size);
+          return;
+        }
+
+        drawText(`${prefix}${parts[0]}`, x, y, size);
+        for (let i = 1; i < parts.length; i++) {
+          drawText(parts[i], x + indent, y - i * lineGap, size);
+        }
+      };
       const marginLeft = 40,
         marginRight = 40,
         contentWidth = width - marginLeft - marginRight;
@@ -108,7 +135,7 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
       );
       drawText(`Date: ${date}`, leftColX, topAfterLogo - 4 * gap, small);
       drawText(`P.O. No: ${PO}`, rightColX, topAfterLogo, small);
-      drawText(`G.P. No: ${GP}`, rightColX, topAfterLogo - gap, small);
+      drawLabelMultiline("G.P. No", GP, rightColX, topAfterLogo - gap, small, gap);
       const storedCompany = typeof window !== 'undefined' ? localStorage.getItem('invoiceCompanyName') : null;
       const Company_Name = storedCompany || "Mekotex P.V.T Limited";
       const companySize = 24,

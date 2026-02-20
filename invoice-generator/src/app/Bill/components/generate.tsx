@@ -13,6 +13,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [companyName, setCompanyName] = useState<string>('');
   const [billNumber, setBillNumber] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const [multiChallanMode, setMultiChallanMode] = useState<boolean>(false);
+  const [selectedChallans, setSelectedChallans] = useState<any[]>([]);
   
   // Batch mode state
   const [batchChallans, setBatchChallans] = useState<any[]>([]);
@@ -86,10 +89,15 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
 
   const handleGenerate = async () => {
     try {
-      const challanNoNumeric = Number(challanQuery.replace(/\D/g, ''));
-      if (!challanNoNumeric) return;
+      const challanNos = (multiChallanMode ? selectedChallans : [{ challanno: challanQuery }])
+        .map((c: any) => Number(String(c?.challanno ?? c ?? '').replace(/\D/g, '')))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+
+      if (challanNos.length === 0) return;
+
       const payload = { 
-        challanno: challanNoNumeric, 
+        challanno: challanNos[0],
+        challannos: multiChallanMode ? challanNos : undefined,
         billno: billNumber,
         lines: rows.map(r => {
           const q = Number(String(r.qty ?? '').replace(/,/g, '')) || 0;
@@ -213,9 +221,80 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     handleSelectChallan(challan);
   };
 
+  const toItems = (desc: any) => {
+    if (Array.isArray(desc)) return desc;
+    if (!desc) return [];
+    return [desc];
+  };
+
+  const mapChallanToRows = (item: any): RowData[] => {
+    const desc = item?.Description ?? item?.description ?? [];
+    const arr = toItems(desc);
+    const mapped = arr.map((d: any) => {
+      if (typeof d === 'string') return { qty: '', description: d, rate: '', amount: '' };
+      const qty = String(d?.qty ?? d?.quantity ?? '');
+      const rawRate = d?.rate ?? '';
+      const rawAmount = d?.amount ?? '';
+      const qn = Number(qty);
+      const rn = Number(String(rawRate ?? ''));
+      const an = Number(String(rawAmount ?? ''));
+      let perPieceRate = '';
+      if (!Number.isNaN(rn) && rn) perPieceRate = String((Math.round((rn + Number.EPSILON) * 100) / 100).toFixed(2));
+      else if (!Number.isNaN(qn) && qn && !Number.isNaN(an)) perPieceRate = String((Math.round((an / qn + Number.EPSILON) * 100) / 100).toFixed(2));
+      return { qty, description: String(d?.description ?? d?.materialDescription ?? ''), rate: perPieceRate, amount: perPieceRate };
+    });
+    return mapped.length ? mapped : [];
+  };
+
   const handleSelectChallan = (item: any) => {
     const challanNo = item?.challanno ?? item?.challan ?? '';
     const challanStr = String(challanNo); setChallanQuery(challanStr); setShowSuggestions(false);
+
+    if (multiChallanMode) {
+      setSelectedChallans(prev => {
+        const key = String(challanNo);
+        if (prev.some((c: any) => String(c?.challanno ?? c) === key)) return prev;
+
+        // Use the first selected challan as the "primary" one for header fields
+        if (prev.length === 0) {
+          const industry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
+          if (industry) {
+            setCompanyName(industry);
+            try { localStorage.setItem('invoiceCompanyName', String(industry)); } catch {}
+          }
+          try {
+            if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP));
+            if (item?.PO ?? item?.po) localStorage.setItem('latestInvoicePO', String(item?.PO ?? item?.po));
+          } catch {}
+        }
+
+        const next = [...prev, item];
+        try {
+          const nums = next.map((c: any) => String(c?.challanno ?? c)).filter(Boolean);
+          const padded = nums.map((s: string) => (/\d/.test(s) ? String(Number(s)).padStart(5, '0') : s)).join(', ');
+          localStorage.setItem('latestInvoiceChallan', padded);
+
+          const gps = next
+            .map((c: any) => String(c?.GP ?? c?.gp ?? '').trim())
+            .filter(Boolean);
+          const gpJoined = Array.from(new Set(gps)).join(', ');
+          if (gpJoined) localStorage.setItem('latestInvoiceGP', gpJoined);
+        } catch {}
+        return next;
+      });
+
+      // Append this challan's lines into current invoice rows
+      const mapped = mapChallanToRows(item);
+      if (mapped.length) {
+        setRows(prev => {
+          const existing = prev.filter(r => (r.qty || r.description || r.rate || r.amount));
+          const next = [...existing, ...mapped];
+          return next.length ? [...next, { qty: '', description: '', rate: '', amount: '' }] : prev;
+        });
+        onConfirm();
+      }
+      return;
+    }
     
     // Propagate company name and generate bill no if industry exists
     const industry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
@@ -230,35 +309,10 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP));
       if (item?.PO ?? item?.po) localStorage.setItem('latestInvoicePO', String(item?.PO ?? item?.po));
     } catch {}
-    const desc = item?.Description ?? item?.description ?? [];
-    let mapped: RowData[] = [];
-    if (Array.isArray(desc)) mapped = desc.map((d:any) => {
-      if (typeof d === 'string') return { qty: '', description: d, rate: '', amount: '' };
-      const qty = String(d?.qty ?? d?.quantity ?? '');
-      const rawRate = d?.rate ?? '';
-      const rawAmount = d?.amount ?? '';
-      // Prefer explicit rate; otherwise derive per-piece rate from amount/qty when possible
-      let perPieceRate = '';
-      const qn = Number(qty);
-      const rn = Number(String(rawRate ?? ''));
-      const an = Number(String(rawAmount ?? ''));
-      if (!Number.isNaN(rn) && rn) perPieceRate = String((Math.round((rn + Number.EPSILON) * 100) / 100).toFixed(2));
-      else if (!Number.isNaN(qn) && qn && !Number.isNaN(an)) perPieceRate = String((Math.round((an / qn + Number.EPSILON) * 100) / 100).toFixed(2));
-      return { qty, description: String(d?.description ?? d?.materialDescription ?? ''), rate: perPieceRate, amount: perPieceRate };
-    });
-    else if (desc) {
-      const qty = String((desc as any)?.qty ?? (desc as any)?.quantity ?? '');
-      const rawRate = (desc as any)?.rate ?? '';
-      const rawAmount = (desc as any)?.amount ?? '';
-      const qn = Number(qty);
-      const rn = Number(String(rawRate ?? ''));
-      const an = Number(String(rawAmount ?? ''));
-      let perPieceRate = '';
-      if (!Number.isNaN(rn) && rn) perPieceRate = String((Math.round((rn + Number.EPSILON) * 100) / 100).toFixed(2));
-      else if (!Number.isNaN(qn) && qn && !Number.isNaN(an)) perPieceRate = String((Math.round((an / qn + Number.EPSILON) * 100) / 100).toFixed(2));
-      mapped = [{ qty, description: String((desc as any)?.description ?? ''), rate: perPieceRate, amount: perPieceRate }];
-    }
-    if (mapped.length === 0) mapped = rows; setRows(mapped); onConfirm();
+    const mapped = mapChallanToRows(item);
+    if (mapped.length === 0) return;
+    setRows(mapped);
+    onConfirm();
   };
 
   return (
@@ -354,6 +408,48 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
                 placeholder='Search Challan'
               />
             </div>
+
+        <div className='mt-2 flex items-center gap-2'>
+          <input
+            type='checkbox'
+            checked={multiChallanMode}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setMultiChallanMode(next);
+              if (!next) {
+                setSelectedChallans([]);
+                try { localStorage.removeItem('latestInvoiceChallan'); } catch {}
+              }
+            }}
+            className='rounded accent-[var(--accent)]'
+          />
+          <span className='text-[11px] text-white/80'>Combine multiple challans into one invoice</span>
+          {multiChallanMode && selectedChallans.length > 0 && (
+            <button
+              type='button'
+              onClick={() => {
+                setSelectedChallans([]);
+                try { localStorage.removeItem('latestInvoiceChallan'); } catch {}
+              }}
+              className='ml-auto text-[11px] text-white/70 hover:text-white underline'
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {multiChallanMode && selectedChallans.length > 0 && (
+          <div className='mt-2 flex flex-wrap gap-2'>
+            {selectedChallans.map((c: any) => {
+              const id = String(c?.challanno ?? c);
+              return (
+                <span key={id} className='px-2 py-1 rounded-md bg-white/10 text-[11px] text-white'>
+                  Challan {(/\d/.test(id) ? String(Number(id)).padStart(5, '0') : id)}
+                </span>
+              );
+            })}
+          </div>
+        )}
             {showSuggestions && (
               <div className='absolute left-0 z-10 mt-1 w-full max-h-60 overflow-auto bg-white text-black rounded-md shadow border border-gray-200'>
                 {loading ? (

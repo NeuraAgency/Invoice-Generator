@@ -238,24 +238,43 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { challanno, lines, billno: requestedBillNo } = req.body
+      const { challanno, challannos, lines, billno: requestedBillNo } = req.body
 
       if (!challanno || !Array.isArray(lines)) {
         return res.status(400).json({ error: 'challanno and lines[] are required' })
       }
 
-      // Confirm challan exists 
-      const { data: challanRow, error: challanError } = await supabase
+      const parseChallanno = (v) => {
+        const n = Number(String(v ?? '').replace(/\D/g, ''))
+        return Number.isFinite(n) && n > 0 ? n : null
+      }
+
+      const primaryCh = parseChallanno(challanno)
+      if (!primaryCh) {
+        return res.status(400).json({ error: 'Invalid challanno' })
+      }
+
+      const allChallans = (() => {
+        if (!Array.isArray(challannos) || challannos.length === 0) return [primaryCh]
+        const parsed = challannos.map(parseChallanno).filter(Boolean)
+        const set = new Set(parsed)
+        set.add(primaryCh)
+        return Array.from(set)
+      })()
+
+      // Confirm challan(s) exist
+      const { data: challanRows, error: challanError } = await supabase
         .from('DeliveryChallan')
         .select('challanno')
-        .eq('challanno', challanno)
-        .maybeSingle()
+        .in('challanno', allChallans)
 
       if (challanError) {
         return res.status(500).json({ error: challanError.message })
       }
-      if (!challanRow) {
-        return res.status(404).json({ error: 'Challan not found' })
+      const found = new Set((challanRows || []).map(r => r?.challanno))
+      const missing = allChallans.filter(c => !found.has(c))
+      if (missing.length > 0) {
+        return res.status(404).json({ error: `Challan not found: ${missing.join(', ')}` })
       }
 
       // If the client sent a specific bill number (like KTML-0001), we use it.
@@ -326,7 +345,7 @@ export default async function handler(req, res) {
             [
               {
                 billno: candidate,
-                challanno,
+                challanno: primaryCh,
                 Description: descriptionPayload,
               },
             ],
@@ -336,7 +355,18 @@ export default async function handler(req, res) {
           .single()
 
         if (!error) {
-          return res.status(201).json({ data, bill: billStr })
+          // Optional mapping: one invoice billno -> many challannos
+          if (Array.isArray(allChallans) && allChallans.length > 1) {
+            try {
+              const mapRows = allChallans.map((c) => ({ billno: billStr, challanno: c }))
+              const { error: mapErr } = await supabase.from('invoice_challans').insert(mapRows)
+              if (mapErr) console.warn('invoice_challans insert failed (non-fatal):', mapErr)
+            } catch (e) {
+              console.warn('invoice_challans insert exception (non-fatal):', e)
+            }
+          }
+
+          return res.status(201).json({ data, bill: billStr, challannos: allChallans })
         }
 
         if (error?.code === '23505' || /duplicate key value|already exists/i.test(String(error?.message))) {
@@ -350,6 +380,53 @@ export default async function handler(req, res) {
       }
 
       return res.status(409).json({ error: 'Could not allocate a unique bill number. Please retry.' })
+    }
+
+    if (req.method === 'DELETE') {
+      const billno = (req.body && req.body.billno != null) ? req.body.billno : req.query?.billno
+      const billStr = String(billno ?? '').trim()
+      if (!billStr) return res.status(400).json({ error: 'billno is required' })
+
+      // Try delete by exact billno string first (covers prefixes like KTML-0001)
+      let deleted = []
+      try {
+        const { data, error } = await supabase
+          .from('invoice')
+          .delete()
+          .eq('billno', billStr)
+          .select('billno')
+
+        if (error) return res.status(500).json({ error: error.message })
+        deleted = Array.isArray(data) ? data : []
+      } catch (e) {
+        return res.status(500).json({ error: String(e?.message || e) })
+      }
+
+      // If nothing deleted and billno is numeric-only, try as number (covers numeric billno storage)
+      if (deleted.length === 0 && /^[0-9]+$/.test(billStr)) {
+        const num = Number(billStr)
+        if (Number.isFinite(num)) {
+          const { data, error } = await supabase
+            .from('invoice')
+            .delete()
+            .eq('billno', num)
+            .select('billno')
+          if (error) return res.status(500).json({ error: error.message })
+          deleted = Array.isArray(data) ? data : []
+        }
+      }
+
+      if (deleted.length === 0) return res.status(404).json({ error: 'Invoice not found' })
+
+      // Best-effort cleanup for multi-challan mapping
+      try {
+        const { error: mapErr } = await supabase.from('invoice_challans').delete().eq('billno', billStr)
+        if (mapErr) console.warn('invoice_challans delete failed (non-fatal):', mapErr)
+      } catch (e) {
+        console.warn('invoice_challans delete exception (non-fatal):', e)
+      }
+
+      return res.status(200).json({ deleted: true, billno: billStr })
     }
 
     if (req.method === 'PATCH') {

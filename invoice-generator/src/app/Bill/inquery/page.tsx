@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "@/app/components/DatePicker";
 import JSZip from "jszip";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -37,6 +37,77 @@ const InvoiceInqueryPage = () => {
 	const [selectionRange, setSelectionRange] = useState({ from: "", to: "" });
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
 	const [newDateDt, setNewDateDt] = useState<Date | null>(null);
+	const [, bumpChallanLabels] = useState(0);
+
+	const challanLabelCache = useRef<Map<string, string>>(new Map());
+	const gpLabelCache = useRef<Map<string, string>>(new Map());
+	const poLabelCache = useRef<Map<string, string>>(new Map());
+	const formatChallanList = (nums: number[]) => nums.map((n) => String(n).padStart(5, "0")).join(", ");
+	const getInvoiceMetaForRow = async (row: InvoiceRow) => {
+		const billKey = String(row?.billno ?? "").trim();
+		const fallback = row?.challanno != null ? String(row.challanno).padStart(5, "0") : "";
+		if (!billKey) return fallback;
+		const cached = challanLabelCache.current.get(billKey);
+		if (cached) return cached;
+
+		let label = fallback;
+		let gpLabel = "";
+		let poLabel = "";
+		try {
+			const res = await fetch(`/api/invoice-challans?billno=${encodeURIComponent(billKey)}`);
+			if (res.ok) {
+				const data = await res.json();
+				const nums = Array.isArray(data?.challannos) ? data.challannos : [];
+				const parsed = nums
+					.map((v: any) => Number(String(v ?? "").replace(/\D/g, "")))
+					.filter((n: number) => Number.isFinite(n) && n > 0);
+				if (parsed.length > 0) label = formatChallanList(parsed);
+				gpLabel = String(data?.gp ?? "").trim();
+				poLabel = String(data?.po ?? "").trim();
+			}
+		} catch {}
+
+		challanLabelCache.current.set(billKey, label);
+		gpLabelCache.current.set(billKey, gpLabel);
+		poLabelCache.current.set(billKey, poLabel);
+		bumpChallanLabels((v) => v + 1);
+		return label;
+	};
+
+	const getChallanLabelForRow = async (row: InvoiceRow) => getInvoiceMetaForRow(row);
+	const getGpLabelForRow = async (row: InvoiceRow) => {
+		const billKey = String(row?.billno ?? "").trim();
+		if (!billKey) return row?.DeliveryChallan?.GP ? String(row.DeliveryChallan.GP) : "";
+		const cached = gpLabelCache.current.get(billKey);
+		if (cached != null) return cached;
+		await getInvoiceMetaForRow(row);
+		return gpLabelCache.current.get(billKey) || "";
+	};
+	const getPoLabelForRow = async (row: InvoiceRow) => {
+		const billKey = String(row?.billno ?? "").trim();
+		if (!billKey) return row?.DeliveryChallan?.PO ? String(row.DeliveryChallan.PO) : "";
+		const cached = poLabelCache.current.get(billKey);
+		if (cached != null) return cached;
+		await getInvoiceMetaForRow(row);
+		return poLabelCache.current.get(billKey) || "";
+	};
+
+	// Prefetch merged challan labels so the list UI can show them
+	useEffect(() => {
+		let active = true;
+		(async () => {
+			for (const row of results) {
+				if (!active) return;
+				const billKey = String(row?.billno ?? "").trim();
+				if (!billKey) continue;
+				if (challanLabelCache.current.has(billKey)) continue;
+				await getInvoiceMetaForRow(row);
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [results]);
 
 	const printRows = useMemo(() => {
 		if (printPaidFilter === "paid") return results.filter((r) => r?.status === true);
@@ -183,6 +254,38 @@ const InvoiceInqueryPage = () => {
 			const updated = await res.json();
 			setResults((prev) => prev.map((r) => (String(r.billno) === key ? { ...r, status: updated?.status ?? next } : r)));
 		} catch (e) {
+		} finally {
+			setPendingBills((prev) => {
+				const n = new Set(prev);
+				n.delete(key);
+				return n;
+			});
+		}
+	};
+
+	const handleDeleteInvoice = async (row: InvoiceRow) => {
+		if (row?.billno == null) return;
+		const key = String(row.billno);
+		const ok = window.confirm(`Delete invoice ${key}? This cannot be undone.`);
+		if (!ok) return;
+		setPendingBills((prev) => new Set(prev).add(key));
+		try {
+			const res = await fetch("/api/invoice", {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ billno: row.billno }),
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+			setResults((prev) => prev.filter((r) => String(r.billno) !== key));
+			setSelectedBillIds((prev) => {
+				const n = new Set(prev);
+				n.delete(key);
+				return n;
+			});
+		} catch (e) {
+			console.error("Failed to delete invoice:", e);
+			alert("Failed to delete invoice");
 		} finally {
 			setPendingBills((prev) => {
 				const n = new Set(prev);
@@ -354,6 +457,29 @@ const InvoiceInqueryPage = () => {
 				color: c,
 			});
 		};
+		const drawLabelMultiline = (
+			label: string,
+			value: string,
+			x: number,
+			y: number,
+			size: number,
+			lineGap: number
+		) => {
+			const parts = String(value ?? "")
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean);
+			const prefix = `${label}: `;
+			const indent = font.widthOfTextAtSize(prefix, size);
+			if (parts.length === 0) {
+				drawText(`${label}:`, x, y, size);
+				return;
+			}
+			drawText(`${prefix}${parts[0]}`, x, y, size);
+			for (let i = 1; i < parts.length; i++) {
+				drawText(parts[i], x + indent, y - i * lineGap, size);
+			}
+		};
 		const marginLeft = 40,
 			marginRight = 40,
 			contentWidth = width - marginLeft - marginRight;
@@ -377,7 +503,7 @@ const InvoiceInqueryPage = () => {
 		drawText(`Challan No: ${meta.challan ?? ""}`, leftColX, topAfterLogo - 3 * gap, small);
 		drawText(`Date: ${new Date().toLocaleDateString()}`, leftColX, topAfterLogo - 4 * gap, small);
 		drawText(`P.O. No: ${meta.po ?? "00000"}`, rightColX, topAfterLogo, small);
-		drawText(`G.P. No: ${meta.gp ?? ""}`, rightColX, topAfterLogo - gap, small);
+		drawLabelMultiline("G.P. No", meta.gp ?? "", rightColX, topAfterLogo - gap, small, gap);
 		const storedCompany = typeof window !== "undefined" ? localStorage.getItem("invoiceCompanyName") : null;
 		const Company_Name = storedCompany || "Mekotex P.V.T Limited";
 		const companySize = 24,
@@ -432,6 +558,23 @@ const InvoiceInqueryPage = () => {
 
 				drawText(qtyText, tableLeft + cellPadding, cursorY, 10);
 				drawText(descText, tableLeft + colQtyW + cellPadding, cursorY, 9);
+
+				// Mask Rate/Amount cells so long Description text can't visually bleed into them
+				// (keeps column separator lines visible by leaving 1pt margins).
+				page.drawRectangle({
+					x: xCol2 + 1,
+					y: cursorY - 3,
+					width: colRateW - 2,
+					height: 14,
+					color: rgb(1, 1, 1),
+				});
+				page.drawRectangle({
+					x: xCol3 + 1,
+					y: cursorY - 3,
+					width: colAmtW - 2,
+					height: 14,
+					color: rgb(1, 1, 1),
+				});
 				// Rate column
 				drawText(rateText, tableLeft + colQtyW + colDescW + cellPadding, cursorY, 10);
 				// Amount column (qty * rate)
@@ -679,8 +822,12 @@ const InvoiceInqueryPage = () => {
 	const handleReprint = async (row: InvoiceRow) => {
 		try {
 			const rows = toRowData(row.Description);
+			const challanLabel = await getChallanLabelForRow(row);
+			const mergedGp = await getGpLabelForRow(row);
+			const mergedPo = await getPoLabelForRow(row);
 			let gp: string | undefined = undefined;
-			let po: string | undefined = row?.DeliveryChallan?.PO;
+			let po: string | undefined = mergedPo || row?.DeliveryChallan?.PO;
+			if (mergedGp) gp = mergedGp;
 			if (row.challanno != null) {
 				try {
 					const ch = encodeURIComponent(String(row.challanno));
@@ -688,7 +835,7 @@ const InvoiceInqueryPage = () => {
 					if (res.ok) {
 						const data = await res.json();
 						if (Array.isArray(data) && data.length > 0) {
-							gp = data[0]?.GP ?? data[0]?.gp ?? undefined;
+							gp = gp ?? (data[0]?.GP ?? data[0]?.gp ?? undefined);
 							po = po ?? (data[0]?.PO ?? data[0]?.po ?? undefined);
 						}
 					}
@@ -698,7 +845,7 @@ const InvoiceInqueryPage = () => {
 			}
 			const bytes = await generateInvoicePdfBytes(rows, {
 				bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
-				challan: row.challanno ? String(row.challanno).padStart(5, "0") : undefined,
+				challan: challanLabel || undefined,
 				gp,
 				po,
 			});
@@ -732,8 +879,12 @@ const InvoiceInqueryPage = () => {
 			const zip = new JSZip();
 			for (const row of sorted) {
 				const rows = toRowData(row.Description);
+				const challanLabel = await getChallanLabelForRow(row);
+				const mergedGp = await getGpLabelForRow(row);
+				const mergedPo = await getPoLabelForRow(row);
 				let gp: string | undefined = undefined;
-				let po: string | undefined = row?.DeliveryChallan?.PO;
+				let po: string | undefined = mergedPo || row?.DeliveryChallan?.PO;
+				if (mergedGp) gp = mergedGp;
 				if (row.challanno != null) {
 					try {
 						const ch = encodeURIComponent(String(row.challanno));
@@ -741,7 +892,7 @@ const InvoiceInqueryPage = () => {
 						if (res.ok) {
 							const data = await res.json();
 							if (Array.isArray(data) && data.length > 0) {
-								gp = data[0]?.GP ?? data[0]?.gp ?? undefined;
+								gp = gp ?? (data[0]?.GP ?? data[0]?.gp ?? undefined);
 								po = po ?? (data[0]?.PO ?? data[0]?.po ?? undefined);
 							}
 						}
@@ -749,7 +900,7 @@ const InvoiceInqueryPage = () => {
 				}
 				const bytes = await generateInvoicePdfBytes(rows, {
 					bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
-					challan: row.challanno ? String(row.challanno).padStart(5, "0") : undefined,
+					challan: challanLabel || undefined,
 					gp,
 					po,
 				});
@@ -848,7 +999,9 @@ const InvoiceInqueryPage = () => {
 						<div className="space-y-4">
 							{results.map((row) => {
 								const billStr = row.billno != null ? String(row.billno).padStart(5, "0") : "-";
-								const challanStr = row.challanno != null ? String(row.challanno).padStart(5, "0") : "-";
+								const billKey = String(row.billno ?? "").trim();
+								const cachedChallan = billKey ? challanLabelCache.current.get(billKey) : null;
+								const challanStr = cachedChallan || (row.challanno != null ? String(row.challanno).padStart(5, "0") : "-");
 								const created = new Date(row.created_at).toLocaleString();
 								const key = String(row.billno ?? Math.random());
 								return (
@@ -860,7 +1013,7 @@ const InvoiceInqueryPage = () => {
 											</div>
 											<div className="col-span-12 md:col-span-2 px-2">
 												<div className="text-[11px] uppercase text-white/60">Challan no</div>
-												<div className="text-sm font-semibold">{challanStr}</div>
+												<div className="text-sm font-semibold break-words">{challanStr}</div>
 											</div>
 											<div className="col-span-12 md:col-span-2 px-2">
 												<div className="text-[11px] uppercase text-white/60">Date</div>
@@ -872,6 +1025,7 @@ const InvoiceInqueryPage = () => {
 													{row.status ? "Paid" : "Unpaid"}
 												</button>
 												<button onClick={() => handleReprint(row)} className="px-4 py-1.5 rounded-md bg-[var(--accent)] text-black text-xs font-semibold w-full md:w-auto">Reprint</button>
+												<button onClick={() => handleDeleteInvoice(row)} disabled={pendingBills.has(String(row.billno))} className="px-4 py-1.5 rounded-md bg-red-500/90 hover:bg-red-500 text-white text-xs font-semibold w-full md:w-auto disabled:opacity-60 disabled:cursor-not-allowed">Delete</button>
 											</div>
 										</div>
 									</div>
@@ -978,8 +1132,8 @@ const InvoiceInqueryPage = () => {
 													</td>
 													<td className="px-4 py-3 text-white/50">{idx + 1}</td>
 													<td className="px-4 py-3 font-medium text-white">{String(row.billno).padStart(5, '0')}</td>
-													<td className="px-4 py-3 text-white/70">{row.challanno != null ? String(row.challanno).padStart(5, '0') : '-'}</td>
-													<td className="px-4 py-3 text-white/70">{row.DeliveryChallan?.GP || '-'}</td>
+													<td className="px-4 py-3 text-white/70 break-words">{(challanLabelCache.current.get(String(row.billno ?? '').trim()) || (row.challanno != null ? String(row.challanno).padStart(5, '0') : '-'))}</td>
+													<td className="px-4 py-3 text-white/70 break-words">{(gpLabelCache.current.get(String(row.billno ?? '').trim()) || row.DeliveryChallan?.GP || '-')}</td>
 													<td className="px-4 py-3 text-right font-mono text-[var(--accent)]">{total.toFixed(2)}</td>
 												</tr>
 											);
