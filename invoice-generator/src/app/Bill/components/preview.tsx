@@ -18,16 +18,20 @@ const Preview: React.FC<{ rows: RowData[] }> = ({ rows }) => {
   const challan = invoiceChallan;
   const GP = invoiceGP || "";
   useEffect(() => {
-    try {
-      const storedBill = localStorage.getItem("latestBill");
-      if (storedBill) setBill(storedBill);
-      const storedChallan = localStorage.getItem("latestInvoiceChallan");
-      if (storedChallan) setInvoiceChallan(storedChallan);
-      const storedGP = localStorage.getItem("latestInvoiceGP");
-      if (storedGP) setInvoiceGP(storedGP);
-      const storedPO = localStorage.getItem("latestInvoicePO");
-      if (storedPO) setInvoicePO(storedPO);
-    } catch {}
+    const syncFromStorage = () => {
+      try {
+        const storedBill = localStorage.getItem("latestBill");
+        setBill(storedBill || "00000");
+        const storedChallan = localStorage.getItem("latestInvoiceChallan");
+        setInvoiceChallan(storedChallan || "00000");
+        const storedGP = localStorage.getItem("latestInvoiceGP");
+        setInvoiceGP(storedGP || "");
+        const storedPO = localStorage.getItem("latestInvoicePO");
+        setInvoicePO(storedPO || "00000");
+      } catch {}
+    };
+
+    syncFromStorage();
     async function generatePDF() {
       const pdfDoc = await PDFDocument.create();
       const page = pdfDoc.addPage([595.28, 841.89]);

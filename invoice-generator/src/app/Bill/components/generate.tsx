@@ -22,7 +22,11 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(0);
   const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
 
+  const isUnionFabrics = (name: string) => name.trim().toLowerCase().startsWith('union fabrics');
+  const UNION_FABRICS_CANONICAL = 'Union Fabrics (Pvt) Ltd.';
+
   const getInitials = (name: string) => {
+    if (isUnionFabrics(name)) return 'UF';
     return name
       .split(/\s+/)
       .filter(w => w.length > 0)
@@ -30,16 +34,21 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       .join('');
   };
 
+  const getBillPrefix = (name: string) => {
+    if (isUnionFabrics(name)) return 'UFPL';
+    return getInitials(name);
+  };
+
   const generateBillNo = (name: string, lastNumericPart: number) => {
     if (!name) return "";
-    const initials = getInitials(name);
-    return initials ? `${initials}-${String(lastNumericPart + 1).padStart(4, '0')}` : "";
+    const prefix = getBillPrefix(name);
+    return prefix ? `${prefix}-${String(lastNumericPart + 1).padStart(4, '0')}` : "";
   };
 
   useEffect(() => {
     if (!companyName) return;
-    const initials = getInitials(companyName);
-    if (!initials) return;
+    const prefix = getBillPrefix(companyName);
+    if (!prefix) return;
 
     // Fetch latest invoice to find the last numeric part for this company
     const fetchLatest = async () => {
@@ -47,11 +56,14 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
         const res = await fetch('/api/invoice?limit=100');
         if (res.ok) {
           const data = await res.json();
-          const companyInvoices = data.filter((inv: any) => 
-            inv.DeliveryChallan?.Industry === companyName || 
-            (inv.billno && String(inv.billno).startsWith(initials))
-          );
-          
+          const companyInvoices = data.filter((inv: any) => {
+            const invIndustry = inv.DeliveryChallan?.Industry || '';
+            const nameMatch = isUnionFabrics(companyName)
+              ? isUnionFabrics(invIndustry)
+              : invIndustry === companyName;
+            return nameMatch || (inv.billno && String(inv.billno).startsWith(prefix));
+          });
+
           let maxNum = 0;
           companyInvoices.forEach((inv: any) => {
             const numPart = String(inv.billno).split('-')[1] || String(inv.billno).match(/\d+$/)?.[0];
@@ -60,7 +72,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
               if (!isNaN(n)) maxNum = Math.max(maxNum, n);
             }
           });
-          
+
           setBillNumber(generateBillNo(companyName, maxNum));
         }
       } catch (err) {
@@ -129,6 +141,21 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       } catch {}
       setSuccessMsg(`Invoice ${billStr || ''} generated and saved successfully!`);
       setTimeout(() => setSuccessMsg(null), 5000);
+
+      // Clear preview state so stale data doesn't persist into the next invoice
+      try {
+        localStorage.removeItem('latestInvoiceChallan');
+        localStorage.removeItem('latestInvoiceGP');
+        localStorage.removeItem('latestInvoicePO');
+      } catch {}
+
+      // Reset form for next invoice (unless in batch mode)
+      if (!isBatchMode) {
+        setChallanQuery('');
+        setSelectedChallans([]);
+        setRows([{ qty: '', description: '', rate: '', amount: '' }]);
+      }
+
       onConfirm();
       
       // If in batch mode, move to next challan
@@ -257,14 +284,15 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
 
         // Use the first selected challan as the "primary" one for header fields
         if (prev.length === 0) {
-          const industry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
+          const rawIndustry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
+          const industry = isUnionFabrics(rawIndustry) ? UNION_FABRICS_CANONICAL : rawIndustry;
           if (industry) {
             setCompanyName(industry);
             try { localStorage.setItem('invoiceCompanyName', String(industry)); } catch {}
           }
           try {
-            if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP));
-            if (item?.PO ?? item?.po) localStorage.setItem('latestInvoicePO', String(item?.PO ?? item?.po));
+            localStorage.setItem('latestInvoiceGP', item?.GP ? String(item.GP) : '');
+            localStorage.setItem('latestInvoicePO', (item?.PO ?? item?.po) ? String(item?.PO ?? item?.po) : '');
           } catch {}
         }
 
@@ -297,7 +325,8 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     }
     
     // Propagate company name and generate bill no if industry exists
-    const industry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
+    const rawIndustry = item?.Industry ?? item?.industry ?? item?.Industry_Name ?? '';
+    const industry = isUnionFabrics(rawIndustry) ? UNION_FABRICS_CANONICAL : rawIndustry;
     if (industry) {
       setCompanyName(industry);
       try { localStorage.setItem('invoiceCompanyName', industry); } catch {}
@@ -306,8 +335,9 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     try {
       const padded = challanStr && /\d/.test(challanStr) ? String(Number(challanStr)).padStart(5,'0') : challanStr;
       localStorage.setItem('latestInvoiceChallan', padded);
-      if (item?.GP) localStorage.setItem('latestInvoiceGP', String(item.GP));
-      if (item?.PO ?? item?.po) localStorage.setItem('latestInvoicePO', String(item?.PO ?? item?.po));
+      // Always update GP and PO - use empty string if not present to avoid stale values
+      localStorage.setItem('latestInvoiceGP', item?.GP ? String(item.GP) : '');
+      localStorage.setItem('latestInvoicePO', (item?.PO ?? item?.po) ? String(item?.PO ?? item?.po) : '');
     } catch {}
     const mapped = mapChallanToRows(item);
     if (mapped.length === 0) return;

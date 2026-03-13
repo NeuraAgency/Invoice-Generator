@@ -296,6 +296,7 @@ const InvoiceInqueryPage = () => {
 	};
 
 	const handleGenerateInvoiceForChallan = async (challan: any) => {
+		const isUnionFabrics = (name: string) => name.trim().toLowerCase().startsWith('union fabrics');
 		try {
 			const challanNo = challan?.challanno ?? challan?.id;
 			if (!challanNo) {
@@ -316,20 +317,31 @@ const InvoiceInqueryPage = () => {
 			});
 
 			// Generate bill number
-			const companyName = challan?.Industry ?? genSelectedCompany;
-			const getInitials = (name: string) => name.split(/\s+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('');
-			const initials = getInitials(companyName);
+			const rawCompanyName = challan?.Industry ?? genSelectedCompany;
+			const companyName = isUnionFabrics(rawCompanyName) ? 'Union Fabrics (Pvt) Ltd.' : rawCompanyName;
+			const getInitials = (name: string) => {
+				if (isUnionFabrics(name)) return 'UF';
+				return name.split(/\s+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('');
+			};
+			const getBillPrefix = (name: string) => {
+				if (isUnionFabrics(name)) return 'UFPL';
+				return getInitials(name);
+			};
+			const prefix = getBillPrefix(companyName);
 
 			// Fetch latest invoice for this company to determine next bill number
-			let billNumber = `${initials}-0001`;
+			let billNumber = `${prefix}-0001`;
 			try {
 				const res = await fetch('/api/invoice?limit=100');
 				if (res.ok) {
 					const data = await res.json();
-					const companyInvoices = data.filter((inv: any) =>
-						inv.DeliveryChallan?.Industry === companyName ||
-						(inv.billno && String(inv.billno).startsWith(initials))
-					);
+					const companyInvoices = data.filter((inv: any) => {
+						const invIndustry = inv.DeliveryChallan?.Industry || '';
+						const nameMatch = isUnionFabrics(companyName)
+							? isUnionFabrics(invIndustry)
+							: invIndustry === companyName;
+						return nameMatch || (inv.billno && String(inv.billno).startsWith(prefix));
+					});
 					let maxNum = 0;
 					companyInvoices.forEach((inv: any) => {
 						const numPart = String(inv.billno).split('-')[1] || String(inv.billno).match(/\d+$/)?.[0];
@@ -338,7 +350,7 @@ const InvoiceInqueryPage = () => {
 							if (!isNaN(n)) maxNum = Math.max(maxNum, n);
 						}
 					});
-					billNumber = `${initials}-${String(maxNum + 1).padStart(4, '0')}`;
+					billNumber = `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
 				}
 			} catch {}
 

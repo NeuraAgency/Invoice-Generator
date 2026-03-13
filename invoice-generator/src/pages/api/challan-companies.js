@@ -1,11 +1,12 @@
 import { getSupabaseAdminClient } from '../../lib/supabaseServer'
 
+const UNION_FABRICS_CANONICAL = 'Union Fabrics (Pvt) Ltd.'
+const isUnionFabrics = (name) => String(name || '').trim().toLowerCase().startsWith('union fabrics')
+
 export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
     const supabase = getSupabaseAdminClient()
-    // Fetch distinct Industry values; Supabase distinct on select isn't cross-compatible in all versions,
-    // so we fetch and de-duplicate in memory.
     const { data, error } = await supabase
       .from('DeliveryChallan')
       .select('Industry')
@@ -16,9 +17,12 @@ export default async function handler(req, res) {
     const set = new Set()
     for (const r of (data || [])) {
       const name = r?.Industry && String(r.Industry).trim()
-      if (name) set.add(name)
+      if (name) {
+        // Normalize all "Union Fabrics*" variations to one canonical name
+        set.add(isUnionFabrics(name) ? UNION_FABRICS_CANONICAL : name)
+      }
     }
-    const list = Array.from(set)
+    const list = Array.from(set).sort()
     return res.status(200).json(list)
   } catch (e) {
     console.error('/api/challan-companies exception:', e)

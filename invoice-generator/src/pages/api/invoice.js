@@ -1,5 +1,7 @@
 import { getSupabaseAdminClient } from '../../lib/supabaseServer'
 
+const isUnionFabrics = (name) => String(name || '').trim().toLowerCase().startsWith('union fabrics')
+
 export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdminClient()
@@ -64,7 +66,11 @@ export default async function handler(req, res) {
         let resultData = Array.isArray(data) ? data : []
         if (industry && typeof industry === 'string') {
           const inorm = String(industry).trim().toLowerCase()
-          resultData = resultData.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+          resultData = resultData.filter(r => {
+            const ind = String(r?.DeliveryChallan?.Industry || '').trim()
+            if (isUnionFabrics(inorm)) return isUnionFabrics(ind)
+            return ind.toLowerCase() === inorm
+          })
         }
         if (paidBool === true) {
           resultData = resultData.filter(r => r?.status === true)
@@ -169,7 +175,11 @@ export default async function handler(req, res) {
           let resultFd = Array.isArray(fd) ? fd : []
           if (industry && typeof industry === 'string') {
             const inorm = String(industry).trim().toLowerCase()
-            resultFd = resultFd.filter(r => String(r?.DeliveryChallan?.Industry || '').toLowerCase() === inorm)
+            resultFd = resultFd.filter(r => {
+              const ind = String(r?.DeliveryChallan?.Industry || '').trim()
+              if (isUnionFabrics(inorm)) return isUnionFabrics(ind)
+              return ind.toLowerCase() === inorm
+            })
           }
           if (paidBool === true) {
             resultFd = resultFd.filter(r => r?.status === true)

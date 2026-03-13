@@ -1,5 +1,7 @@
 import { getSupabaseAdminClient } from '../../lib/supabaseServer'
 
+const isUnionFabrics = (name) => String(name || '').trim().toLowerCase().startsWith('union fabrics')
+
 export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdminClient()
@@ -108,7 +110,12 @@ export default async function handler(req, res) {
         .limit(lim)
 
       if (industry && typeof industry === 'string') {
-        query = query.eq('Industry', industry)
+        // If filtering by a Union Fabrics variant, match all Union Fabrics rows
+        if (isUnionFabrics(industry)) {
+          query = query.ilike('Industry', 'Union Fabrics%')
+        } else {
+          query = query.eq('Industry', industry)
+        }
       }
 
       if (date && typeof date === 'string') {
