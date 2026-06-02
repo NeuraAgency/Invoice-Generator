@@ -8,12 +8,35 @@ interface RowData {
 	isNote?: boolean;
 }
 
-const Preview: React.FC<{ rows: RowData[]; industryName: string }> = ({
+import { QuotationRecord } from "./page";
+
+interface PreviewProps {
+	rows: RowData[];
+	industryName: string;
+	onSave: () => void;
+	quotations: QuotationRecord[];
+	onRegenerate: (q: QuotationRecord) => void;
+}
+
+const Preview: React.FC<PreviewProps> = ({
 	rows,
 	industryName,
+	onSave,
+	quotations,
+	onRegenerate,
 }) => {
 	const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 	const [today, setToday] = useState<string>("");
+	const [searchTerm, setSearchTerm] = useState("");
+	const [filterDate, setFilterDate] = useState("");
+
+	const filteredQuotations = (quotations || []).filter((q) => {
+		const matchSearch =
+			(q.industry_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+			(q.quotation_no || "").toLowerCase().includes(searchTerm.toLowerCase());
+		const matchDate = filterDate ? q.quotation_date === filterDate : true;
+		return matchSearch && matchDate;
+	});
 
 	useEffect(() => {
 		setToday(new Date().toLocaleDateString());
@@ -250,8 +273,8 @@ page.drawRectangle({
 	}, [rows, industryName, today]);
 
 	return (
-		<div className="w-full h-screen flex flex-col items-start gap-4">
-			<div className="w-full h-[580px] rounded-xl shadow-lg overflow-hidden bg-white">
+		<div className="w-full flex-col h-full overflow-y-auto pr-2 pb-10">
+			<div className="w-full h-[580px] rounded-xl shadow-lg overflow-hidden bg-white shrink-0">
 				{pdfUrl ? (
 					<iframe
 						src={pdfUrl}
@@ -264,15 +287,82 @@ page.drawRectangle({
 					</div>
 				)}
 			</div>
-			{pdfUrl && (
-				<a
-					href={pdfUrl}
-					download="Quotation.pdf"
-					className="inline-flex items-center px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-medium hover:opacity-90 transition"
+			
+			<div className="mt-4 flex flex-wrap items-center gap-3 shrink-0">
+				{pdfUrl && (
+					<a
+						href={pdfUrl}
+						download="Quotation.pdf"
+						className="inline-flex items-center px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-medium hover:opacity-90 transition"
+					>
+						Download Quotation
+					</a>
+				)}
+				<button
+					onClick={onSave}
+					className="inline-flex items-center px-4 py-2 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition"
 				>
-					Download Quotation
-				</a>
-			)}
+					Save Quotation to DB
+				</button>
+			</div>
+
+			{/* Saved Quotations List */}
+			<div className="mt-8 bg-[#1a1a1a] border border-gray-700 rounded-xl p-4 shrink-0">
+				<h3 className="text-white text-sm font-semibold mb-4">Saved Quotations</h3>
+				<div className="flex flex-wrap gap-4 mb-4">
+					<input
+						type="text"
+						placeholder="Search by Industry or Quote No..."
+						className="bg-transparent border border-gray-600 text-white text-xs rounded-lg px-3 py-2 w-full sm:w-64 focus:outline-none focus:border-[var(--accent)]"
+						value={searchTerm}
+						onChange={(e) => setSearchTerm(e.target.value)}
+					/>
+					<input
+						type="date"
+						className="bg-transparent border border-gray-600 text-white text-xs rounded-lg px-3 py-2 w-full sm:w-40 focus:outline-none focus:border-[var(--accent)]"
+						value={filterDate}
+						onChange={(e) => setFilterDate(e.target.value)}
+					/>
+				</div>
+
+				<div className="w-full overflow-x-auto">
+					<table className="w-full text-left text-xs text-gray-300 min-w-[600px]">
+						<thead className="bg-[#2a2a2a] text-white">
+							<tr>
+								<th className="px-3 py-2 rounded-tl-lg">Quotation No</th>
+								<th className="px-3 py-2">Industry</th>
+								<th className="px-3 py-2">Date</th>
+								<th className="px-3 py-2 text-center rounded-tr-lg">Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{filteredQuotations.length > 0 ? (
+								filteredQuotations.map((q) => (
+									<tr key={q.id} className="border-b border-gray-800 hover:bg-[#252525]">
+										<td className="px-3 py-2">{q.quotation_no}</td>
+										<td className="px-3 py-2">{q.industry_name}</td>
+										<td className="px-3 py-2">{q.quotation_date}</td>
+										<td className="px-3 py-2 text-center">
+											<button
+												onClick={() => onRegenerate(q)}
+												className="bg-[var(--accent)] text-white px-3 py-1 rounded text-[10px] hover:opacity-90"
+											>
+												Regenerate
+											</button>
+										</td>
+									</tr>
+								))
+							) : (
+								<tr>
+									<td colSpan={4} className="text-center py-4 text-gray-500">
+										No quotations found.
+									</td>
+								</tr>
+							)}
+						</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
 	);
 };

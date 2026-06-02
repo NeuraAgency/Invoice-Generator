@@ -30,6 +30,10 @@ interface GenerateProps {
     date?: string | null;
     sampleReturned?: boolean | null;
   };
+  poNo: string;
+  setPoNo: React.Dispatch<React.SetStateAction<string>>;
+  challanno: string;
+  setChallanno: React.Dispatch<React.SetStateAction<string>>;
 }
 
 // Helper to map a record (DeliveryChallan or extraction) into table rows
@@ -75,7 +79,17 @@ function mapChallanToRows(rec: any): RowData[] {
 
 export { mapChallanToRows };
 
-const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, initialMeta }) => {
+const Generate: React.FC<GenerateProps> = ({
+  rows,
+  setRows,
+  onConfirm,
+  setGpNo,
+  initialMeta,
+  poNo,
+  setPoNo,
+  challanno,
+  setChallanno,
+}) => {
   const isEdit = Boolean(initialMeta?.challanId != null || initialMeta?.challanno != null);
   // GatePass search state
   const [gpQuery, setGpQuery] = useState<string>("");
@@ -84,7 +98,6 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
 
   // ----- NEW STATE -----
-  const [poNo, setPoNo] = useState<string>(""); // controlled Purchase Order input
   const [generating, setGenerating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // NEW: manual GatePass and Company Name
@@ -102,6 +115,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
     if (!initialMeta) return;
 
     if (initialMeta.poNo != null) setPoNo(String(initialMeta.poNo));
+    if (initialMeta.challanno != null) setChallanno(String(initialMeta.challanno).padStart(5, '0'));
     if (initialMeta.gp != null) {
       const val = String(initialMeta.gp);
       setManualGp(val);
@@ -132,7 +146,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
         localStorage.setItem("sampleReturned", val ? "true" : "false");
       } catch {}
     }
-  }, [initialMeta?.challanId]);
+  }, [initialMeta?.challanId, initialMeta?.challanno]);
 
   const persistCompanyName = (val: string) => {
     setCompanyName(val);
@@ -268,6 +282,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm, setGpNo, 
         const existingChallan = initialMeta?.challanno != null ? String(initialMeta.challanno).padStart(5, "0") : null;
         const challanToStore = existingChallan || returnedChallan;
         if (challanToStore) {
+          setChallanno(challanToStore);
           localStorage.setItem("latestChallan", challanToStore);
           try {
             window.dispatchEvent(

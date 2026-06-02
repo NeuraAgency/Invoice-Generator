@@ -8,12 +8,15 @@ interface RowData {
 	isNote?: boolean;
 }
 
+import { QuotationRecord } from "./page";
+
 interface GenerateProps {
 	rows: RowData[];
 	setRows: React.Dispatch<React.SetStateAction<RowData[]>>;
 	industryName: string;
 	setIndustryName: React.Dispatch<React.SetStateAction<string>>;
 	onConfirm: () => void;
+	pastQuotations: QuotationRecord[];
 }
 
 const Generate: React.FC<GenerateProps> = ({
@@ -22,6 +25,7 @@ const Generate: React.FC<GenerateProps> = ({
 	industryName,
 	setIndustryName,
 	onConfirm,
+	pastQuotations,
 }) => {
 	const handleRowChange = (
 		idx: number,
@@ -50,6 +54,22 @@ const Generate: React.FC<GenerateProps> = ({
 
 	const handleDeleteRow = (idx: number) => {
 		setRows((prev) => prev.filter((_, i) => i !== idx));
+	};
+
+	const matchHistoryRate = (desc: string) => {
+		if (!desc || !desc.trim()) return null;
+		const pastForIndustry = pastQuotations.filter(
+			(q) => q.industry_name?.toLowerCase() === industryName.toLowerCase()
+		);
+		for (const q of pastForIndustry) {
+			if (!Array.isArray(q.description)) continue;
+			const found = q.description.find(
+				(r: any) =>
+					r.description?.toLowerCase() === desc.toLowerCase() && r.rate
+			);
+			if (found) return found.rate;
+		}
+		return null;
 	};
 
 	return (
@@ -105,13 +125,19 @@ const Generate: React.FC<GenerateProps> = ({
 											className="w-full text-xs outline-none bg-transparent"
 										/>
 									</td>
-									<td className="px-2.5 py-1 border-r-2 border-black">
+									<td className="px-2.5 py-1 border-r-2 border-black relative group">
 										<input
 											type="text"
 											value={row.rate}
 											onChange={(e) => handleRowChange(idx, "rate", e.target.value)}
-											className="w-full text-xs outline-none bg-transparent"
+											className={`w-full text-xs outline-none bg-transparent ${matchHistoryRate(row.description) && !row.rate ? 'placeholder-green-700' : ''}`}
+											placeholder={matchHistoryRate(row.description) && !row.rate ? `Prev: ${matchHistoryRate(row.description)}` : ""}
 										/>
+										{matchHistoryRate(row.description) && (
+											<div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-green-700 bg-green-100 px-1 rounded font-bold pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+												Prev: {matchHistoryRate(row.description)}
+											</div>
+										)}
 									</td>
 									<td className="px-2 py-1 flex justify-center gap-2">
 										<button onClick={() => handleDeleteRow(idx)}>

@@ -19,6 +19,8 @@ const ChallanPageContent = () => {
   );
   const [confirmedRows, setConfirmedRows] = useState(rows);
   const [selectedGpNo, setSelectedGpNo] = useState<string>("");
+  const [poNo, setPoNo] = useState<string>("");
+  const [challanno, setChallanno] = useState<string>("");
   const [initialMeta, setInitialMeta] = useState<{
     challanId?: number;
     challanno?: number | null;
@@ -46,6 +48,8 @@ const ChallanPageContent = () => {
   useEffect(() => {
     if (!numericEditId && !numericEditChallan) {
       setInitialMeta(null);
+      setPoNo("");
+      setChallanno("");
       setEditError(null);
       setEditLoading(false);
       return;
@@ -71,6 +75,8 @@ const ChallanPageContent = () => {
         setRows(mapped);
         setConfirmedRows(mapped);
         setSelectedGpNo(String(gp));
+        setPoNo(rec?.PO ?? "");
+        setChallanno(rec?.challanno != null ? String(rec.challanno).padStart(5, '0') : "");
         setInitialMeta({
           challanId: rec?.id,
           challanno: rec?.challanno ?? null,
@@ -111,10 +117,14 @@ const ChallanPageContent = () => {
           onConfirm={handleConfirm}
           setGpNo={setSelectedGpNo}
           initialMeta={initialMeta ?? undefined}
+          poNo={poNo}
+          setPoNo={setPoNo}
+          challanno={challanno}
+          setChallanno={setChallanno}
         />
       </div>
       <div className="w-full lg:flex-1 min-w-0">
-        <Preview rows={confirmedRows} gpno={selectedGpNo} />
+        <Preview rows={confirmedRows} gpno={selectedGpNo} po={poNo} challan={challanno} />
       </div>
     </div>
   );

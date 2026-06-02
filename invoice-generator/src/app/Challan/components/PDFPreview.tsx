@@ -26,8 +26,8 @@ export default function Preview(props: PDFPreviewProps) {
   const [sampleReturned, setSampleReturned] = useState<boolean>(false);
 
   useEffect(() => {
-    if (props?.po) {
-      setEffectivePo(props.po);
+    if (props.po !== undefined) {
+      setEffectivePo(props.po ?? "");
     } else {
       try {
         setEffectivePo(localStorage.getItem("latestPO") ?? "");
@@ -35,8 +35,8 @@ export default function Preview(props: PDFPreviewProps) {
         setEffectivePo("");
       }
     }
-    if (props?.challan) {
-      setEffectiveChallan(props.challan);
+    if (props.challan !== undefined) {
+      setEffectiveChallan(props.challan ?? "");
     } else {
       try {
         setEffectiveChallan(localStorage.getItem("latestChallan") ?? "");
