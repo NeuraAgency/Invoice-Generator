@@ -20,7 +20,7 @@
     "groq-sdk": "^0.33.0",
     "jspdf": "^3.0.1",
     "mammoth": "^1.10.0",
-    "next": "15.5.7",
+    "next": "15.5.9",
     "node-tesseract-ocr": "^2.2.1",
     "pdf-lib": "^1.17.1",
     "jszip": "^3.10.1",
