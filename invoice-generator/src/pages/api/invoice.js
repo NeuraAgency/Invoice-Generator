@@ -8,7 +8,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const { bill, challan, limit, item, from, to, industry, paid } = req.query
-      const lim = Number(limit) || 50
+      const lim = Number(limit) || 1000
 
       const parsePaid = (v) => {
         if (v == null) return null
@@ -26,19 +26,25 @@ export default async function handler(req, res) {
       try {
         let query = supabase.from('invoice').select('*, DeliveryChallan(Industry, GP, PO)')
 
-        // Numeric prefix filter for billno
+        // Filter for billno: exact match for numeric, ilike prefix for string patterns (e.g. KTML-0001)
         if (bill && typeof bill === 'string') {
-          const parsedBill = Number(String(bill).replace(/\D/g, ''))
-          if (!Number.isNaN(parsedBill)) {
-            query = query.gte('billno', parsedBill).lt('billno', parsedBill * 10)
+          const trimmed = bill.trim()
+          if (/[a-zA-Z]/.test(trimmed)) {
+            // String-format bill number (e.g. KTML-0001) — use ilike for prefix match
+            query = query.ilike('billno', `${trimmed}%`)
+          } else {
+            const parsedBill = Number(String(trimmed).replace(/\D/g, ''))
+            if (!Number.isNaN(parsedBill) && parsedBill > 0) {
+              query = query.eq('billno', parsedBill)
+            }
           }
         }
 
-        // Numeric prefix filter for challanno
+        // Exact match filter for challanno
         if (challan && typeof challan === 'string') {
           const parsedCh = Number(String(challan).replace(/\D/g, ''))
-          if (!Number.isNaN(parsedCh)) {
-            query = query.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
+          if (!Number.isNaN(parsedCh) && parsedCh > 0) {
+            query = query.eq('challanno', parsedCh)
           }
         }
 
@@ -138,15 +144,20 @@ export default async function handler(req, res) {
         try {
           let fallback = supabase.from('invoice').select('*')
           if (bill && typeof bill === 'string') {
-            const parsedBill = Number(String(bill).replace(/\D/g, ''))
-            if (!Number.isNaN(parsedBill)) {
-              fallback = fallback.gte('billno', parsedBill).lt('billno', parsedBill * 10)
+            const trimmed = bill.trim()
+            if (/[a-zA-Z]/.test(trimmed)) {
+              fallback = fallback.ilike('billno', `${trimmed}%`)
+            } else {
+              const parsedBill = Number(String(trimmed).replace(/\D/g, ''))
+              if (!Number.isNaN(parsedBill) && parsedBill > 0) {
+                fallback = fallback.eq('billno', parsedBill)
+              }
             }
           }
           if (challan && typeof challan === 'string') {
             const parsedCh = Number(String(challan).replace(/\D/g, ''))
-            if (!Number.isNaN(parsedCh)) {
-              fallback = fallback.gte('challanno', parsedCh).lt('challanno', parsedCh * 10)
+            if (!Number.isNaN(parsedCh) && parsedCh > 0) {
+              fallback = fallback.eq('challanno', parsedCh)
             }
           }
           // Date range filters in fallback

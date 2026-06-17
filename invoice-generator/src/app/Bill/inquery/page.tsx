@@ -153,7 +153,7 @@ const InvoiceInqueryPage = () => {
 		const fmt = (d: Date) => d.toISOString().split("T")[0];
 		if (dateFrom) params.set("from", fmt(dateFrom));
 		if (dateTo) params.set("to", fmt(dateTo));
-		params.set("limit", "50");
+		params.set("limit", "1000");
 		return params.toString();
 	}, [billQuery, challanQuery, itemQuery, paidFilter, dateFrom, dateTo]);
 
