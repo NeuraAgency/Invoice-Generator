@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const { id, challan, limit, exact, industry, date, from, to, item, excludeInvoiced } = req.query
+      const { id, challan, limit, exact, industry, date, from, to, item, excludeInvoiced, gp, indent } = req.query
       const lim = Number(limit) || 50
       const exclude = shouldExcludeInvoiced(excludeInvoiced)
 
@@ -139,27 +139,29 @@ export default async function handler(req, res) {
         }
       }
 
+      if (gp && typeof gp === 'string') {
+        query = query.ilike('GP', `%${gp.trim()}%`)
+      }
+
       const { data, error } = await query
 
       if (error) return res.status(500).json({ error: error.message })
+
+      let filtered = data || []
 
       // If challan prefix provided without exact flag, perform client-side prefix filter
       if (challan && typeof challan === 'string' && !(String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true')) {
         const parsed = Number(challan.replace(/\D/g, ''))
         if (!Number.isNaN(parsed)) {
-          const lim = Number(limit) || 50
           const prefix = String(parsed)
-          const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
-          const out = exclude ? await filterOutInvoiced(filtered) : filtered
-          return res.status(200).json(out)
+          filtered = filtered.filter((row) => String(row?.challanno ?? '').startsWith(prefix))
         }
       }
 
       // Item name filter: matches any Description entry's text fields containing the query
       if (item && typeof item === 'string') {
         const q = item.trim().toLowerCase()
-        const lim = Number(limit) || 50
-        const filtered = (data || []).filter(row => {
+        filtered = filtered.filter(row => {
           const desc = row?.Description
           const arr = Array.isArray(desc) ? desc : desc ? [desc] : []
           for (const d of arr) {
@@ -167,12 +169,25 @@ export default async function handler(req, res) {
             if (fields.some(f => typeof f === 'string' && f.toLowerCase().includes(q))) return true
           }
           return false
-        }).slice(0, lim)
-        const out = exclude ? await filterOutInvoiced(filtered) : filtered
-        return res.status(200).json(out)
+        })
       }
 
-      const out = exclude ? await filterOutInvoiced(data) : data
+      // Indent number filter: matches any Description entry's indent number containing the query
+      if (indent && typeof indent === 'string') {
+        const q = indent.trim().toLowerCase()
+        filtered = filtered.filter(row => {
+          const desc = row?.Description
+          const arr = Array.isArray(desc) ? desc : desc ? [desc] : []
+          for (const d of arr) {
+            const ind = String(d?.indNo ?? d?.indno ?? "")
+            if (ind.toLowerCase().includes(q)) return true
+          }
+          return false
+        })
+      }
+
+      const finalFiltered = filtered.slice(0, lim)
+      const out = exclude ? await filterOutInvoiced(finalFiltered) : finalFiltered
       return res.status(200).json(out)
     }
 

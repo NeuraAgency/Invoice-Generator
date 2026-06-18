@@ -23,9 +23,11 @@
     const [companyOptions, setCompanyOptions] = useState<string[]>([]);
     const [filterCompanyDropdownOpen, setFilterCompanyDropdownOpen] = useState(false);
     const [itemQuery, setItemQuery] = useState("");
+    const [gpQuery, setGpQuery] = useState("");
+    const [indentQuery, setIndentQuery] = useState("");
     const [showFilterModal, setShowFilterModal] = useState(false);
     const [excludeInvoiced, setExcludeInvoiced] = useState(false);
-    const [tempFilters, setTempFilters] = useState<{ challan: string; company: string; item: string; from: Date | null; to: Date | null; excludeInvoiced: boolean }>({ challan: "", company: "", item: "", from: null, to: null, excludeInvoiced: false });
+    const [tempFilters, setTempFilters] = useState<{ challan: string; company: string; item: string; gp: string; indent: string; from: Date | null; to: Date | null; excludeInvoiced: boolean }>({ challan: "", company: "", item: "", gp: "", indent: "", from: null, to: null, excludeInvoiced: false });
     const [dateFrom, setDateFrom] = useState<Date | null>(null);
     const [dateTo, setDateTo] = useState<Date | null>(null);
     const [results, setResults] = useState<ChallanRow[]>([]);
@@ -37,13 +39,15 @@
       if (challanQuery.trim()) params.set("challan", challanQuery.trim());
       if (companyQuery.trim()) params.set("industry", companyQuery.trim());
       if (itemQuery.trim()) params.set("item", itemQuery.trim());
+      if (gpQuery.trim()) params.set("gp", gpQuery.trim());
+      if (indentQuery.trim()) params.set("indent", indentQuery.trim());
       const fmt = (d: Date) => d.toISOString().split("T")[0];
       if (dateFrom) params.set("from", fmt(dateFrom));
       if (dateTo) params.set("to", fmt(dateTo));
       if (excludeInvoiced) params.set("excludeInvoiced", "1");
       params.set("limit", "50");
       return params.toString();
-    }, [challanQuery, companyQuery, itemQuery, dateFrom, dateTo, excludeInvoiced]);
+    }, [challanQuery, companyQuery, itemQuery, gpQuery, indentQuery, dateFrom, dateTo, excludeInvoiced]);
 
     useEffect(() => {
       const controller = new AbortController();
@@ -79,13 +83,15 @@
     }, []);
 
     const openFilterModal = () => {
-      setTempFilters({ challan: challanQuery, company: companyQuery, item: itemQuery, from: dateFrom, to: dateTo, excludeInvoiced });
+      setTempFilters({ challan: challanQuery, company: companyQuery, item: itemQuery, gp: gpQuery, indent: indentQuery, from: dateFrom, to: dateTo, excludeInvoiced });
       setShowFilterModal(true);
     };
     const applyFilters = () => {
       setChallanQuery(tempFilters.challan);
       setCompanyQuery(tempFilters.company);
       setItemQuery(tempFilters.item);
+      setGpQuery(tempFilters.gp);
+      setIndentQuery(tempFilters.indent);
       setDateFrom(tempFilters.from);
       setDateTo(tempFilters.to);
       setExcludeInvoiced(Boolean(tempFilters.excludeInvoiced));
@@ -388,7 +394,7 @@
                 </button>
               </div>
               <div className="p-6 flex-1 overflow-auto space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 p-4 bg-white/5 rounded-xl border border-white/5 items-end">
                   <div className="space-y-2">
                     <label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Challan Number</label>
                     <input type="text" value={tempFilters.challan} onChange={(e) => setTempFilters(f => ({ ...f, challan: e.target.value }))} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" placeholder="e.g. 34 or 00034" />
@@ -404,6 +410,14 @@
                         {companyOptions.length === 0 && (<div className="px-3 py-2 text-xs text-white/60">No companies</div>)}
                       </div>
                     )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Gatepass Number</label>
+                    <input type="text" value={tempFilters.gp} onChange={(e) => setTempFilters(f => ({ ...f, gp: e.target.value }))} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" placeholder="e.g. GP-123" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Indent Number</label>
+                    <input type="text" value={tempFilters.indent} onChange={(e) => setTempFilters(f => ({ ...f, indent: e.target.value }))} className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors" placeholder="e.g. IND-789" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Item Name</label>
