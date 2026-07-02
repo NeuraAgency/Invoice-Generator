@@ -45,6 +45,7 @@ const InvoiceInqueryPage = () => {
 	const [editChallanNo, setEditChallanNo] = useState<string>("");
 	const [editGp, setEditGp] = useState<string>("");
 	const [editPo, setEditPo] = useState<string>("");
+	const [editCompanyName, setEditCompanyName] = useState<string>("");
 
 	const challanLabelCache = useRef<Map<string, string>>(new Map());
 	const gpLabelCache = useRef<Map<string, string>>(new Map());
@@ -816,6 +817,8 @@ const InvoiceInqueryPage = () => {
 		const [gp, po] = await Promise.all([getGpLabelForRow(row), getPoLabelForRow(row)]);
 		setEditGp(row?.DeliveryChallan?.GP ?? gp ?? "");
 		setEditPo(row?.DeliveryChallan?.PO ?? po ?? "");
+		// @ts-ignore - company_name may not be in the type but exists in DB
+		setEditCompanyName((row as any).company_name ?? row?.DeliveryChallan?.Industry ?? "");
 		const mapped = toRowData(row.Description);
 		setEditRows(mapped.length > 0 ? mapped : [{ qty: "", description: "", rate: "", amount: "" }]);
 		setShowEditModal(true);
@@ -863,6 +866,7 @@ const InvoiceInqueryPage = () => {
 		}
 		if (editGp) payload.gp = editGp;
 		if (editPo) payload.po = editPo;
+		if (editCompanyName) payload.companyName = editCompanyName;
 
 		try {
 			const res = await fetch("/api/invoice", {
@@ -908,7 +912,8 @@ const InvoiceInqueryPage = () => {
 					console.error('Failed to fetch challan for GP:', e);
 				}
 			}
-			const company = row?.DeliveryChallan?.Industry || "";
+			// @ts-ignore - company_name may not be in the type but exists in DB
+			const company = (row as any).company_name || row?.DeliveryChallan?.Industry || "";
 			const bytes = await generateInvoicePdfBytes(rows, {
 				bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 				challan: challanLabel || undefined,
@@ -965,7 +970,8 @@ const InvoiceInqueryPage = () => {
 						}
 					} catch {}
 				}
-				const company = row?.DeliveryChallan?.Industry || "";
+				// @ts-ignore - company_name may not be in the type but exists in DB
+				const company = (row as any).company_name || row?.DeliveryChallan?.Industry || "";
 				const bytes = await generateInvoicePdfBytes(rows, {
 					bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 					challan: challanLabel || undefined,
@@ -1453,6 +1459,19 @@ const InvoiceInqueryPage = () => {
 									placeholder="Leave empty to keep existing"
 								/>
 							</div>
+							{/* Company Name - only show when invoice has no challan */}
+							{!editingRow?.challanno && (
+								<div>
+									<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">Company Name</label>
+									<input
+										type="text"
+										value={editCompanyName}
+										onChange={(e) => setEditCompanyName(e.target.value)}
+										className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+										placeholder="Company name"
+									/>
+								</div>
+							)}
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								<div>
 									<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">GP Number</label>

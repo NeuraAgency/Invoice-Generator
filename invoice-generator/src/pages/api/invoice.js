@@ -428,6 +428,9 @@ export default async function handler(req, res) {
         if (!withoutChallan) {
           insertPayload.challanno = primaryCh;
         }
+        if (withoutChallan && companyName) {
+          insertPayload.company_name = String(companyName).trim();
+        }
 
         const { data, error } = await supabase
           .from('invoice')
@@ -467,7 +470,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { billno, lines, challanno, gp, po } = req.body || {}
+      const { billno, lines, challanno, gp, po, companyName } = req.body || {}
 
       if (billno == null || !Array.isArray(lines)) {
         return res.status(400).json({ error: 'billno and lines[] are required' })
@@ -485,6 +488,7 @@ export default async function handler(req, res) {
 
       const updatePayload = { Description: descriptionPayload }
       if (challanno != null) updatePayload.challanno = challanno
+      if (companyName != null) updatePayload.company_name = String(companyName).trim()
 
       const { data, error } = await supabase
         .from('invoice')
