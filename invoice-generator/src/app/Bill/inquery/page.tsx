@@ -38,6 +38,13 @@ const InvoiceInqueryPage = () => {
 	const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
 	const [newDateDt, setNewDateDt] = useState<Date | null>(null);
 	const [, bumpChallanLabels] = useState(0);
+	const [showEditModal, setShowEditModal] = useState(false);
+	const [editingRow, setEditingRow] = useState<InvoiceRow | null>(null);
+	const [editRows, setEditRows] = useState<any[]>([]);
+	const [editBillNo, setEditBillNo] = useState<string>("");
+	const [editChallanNo, setEditChallanNo] = useState<string>("");
+	const [editGp, setEditGp] = useState<string>("");
+	const [editPo, setEditPo] = useState<string>("");
 
 	const challanLabelCache = useRef<Map<string, string>>(new Map());
 	const gpLabelCache = useRef<Map<string, string>>(new Map());
@@ -316,47 +323,16 @@ const InvoiceInqueryPage = () => {
 				return { qty, description, rate, amount: String(total.toFixed(2)) };
 			});
 
-			// Generate bill number
+			// Bill number: don't guess it here. Send companyName and let the server
+			// (/api/invoice POST) allocate the next number from a prefix-scoped query,
+			// re-derived fresh per attempt, so concurrent "Generate All" calls for the
+			// same company can't collide the way a client-side max-guess could.
 			const rawCompanyName = challan?.Industry ?? genSelectedCompany;
 			const companyName = isUnionFabrics(rawCompanyName) ? 'Union Fabrics (Pvt) Ltd.' : rawCompanyName;
-			const getInitials = (name: string) => {
-				if (isUnionFabrics(name)) return 'UF';
-				return name.split(/\s+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('');
-			};
-			const getBillPrefix = (name: string) => {
-				if (isUnionFabrics(name)) return 'UFPL';
-				return getInitials(name);
-			};
-			const prefix = getBillPrefix(companyName);
-
-			// Fetch latest invoice for this company to determine next bill number
-			let billNumber = `${prefix}-0001`;
-			try {
-				const res = await fetch('/api/invoice?limit=100');
-				if (res.ok) {
-					const data = await res.json();
-					const companyInvoices = data.filter((inv: any) => {
-						const invIndustry = inv.DeliveryChallan?.Industry || '';
-						const nameMatch = isUnionFabrics(companyName)
-							? isUnionFabrics(invIndustry)
-							: invIndustry === companyName;
-						return nameMatch || (inv.billno && String(inv.billno).startsWith(prefix));
-					});
-					let maxNum = 0;
-					companyInvoices.forEach((inv: any) => {
-						const numPart = String(inv.billno).split('-')[1] || String(inv.billno).match(/\d+$/)?.[0];
-						if (numPart) {
-							const n = parseInt(numPart);
-							if (!isNaN(n)) maxNum = Math.max(maxNum, n);
-						}
-					});
-					billNumber = `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
-				}
-			} catch {}
 
 			const payload = {
 				challanno: Number(challanNo),
-				billno: billNumber,
+				companyName,
 				lines
 			};
 
@@ -370,6 +346,9 @@ const InvoiceInqueryPage = () => {
 				const errData = await saveRes.json().catch(() => ({}));
 				throw new Error(errData.error || `HTTP ${saveRes.status}`);
 			}
+
+			const saveBody = await saveRes.json().catch(() => ({}));
+			const billNumber = saveBody?.bill || '';
 
 			// Remove from list
 			setGenUnInvoicedChallans(prev => prev.filter(c => c.challanno !== challan.challanno));
@@ -424,8 +403,8 @@ const InvoiceInqueryPage = () => {
 	const generateInvoicePdfBytes = async (
 		rows: {
 			rate: string; qty: string; description: string; amount: string 
-}[],
-		meta: { bill?: string; challan?: string; gp?: string; po?: string }
+}[], 
+		meta: { bill?: string; challan?: string; gp?: string; po?: string; company?: string }
 	) => {
 		const pdfDoc = await PDFDocument.create();
 		const page = pdfDoc.addPage([595.28, 841.89]);
@@ -516,8 +495,7 @@ const InvoiceInqueryPage = () => {
 		drawText(`Date: ${new Date().toLocaleDateString()}`, leftColX, topAfterLogo - 4 * gap, small);
 		drawText(`P.O. No: ${meta.po ?? "00000"}`, rightColX, topAfterLogo, small);
 		drawLabelMultiline("G.P. No", meta.gp ?? "", rightColX, topAfterLogo - gap, small, gap);
-		const storedCompany = typeof window !== "undefined" ? localStorage.getItem("invoiceCompanyName") : null;
-		const Company_Name = storedCompany || "Mekotex P.V.T Limited";
+		const Company_Name = meta.company || "Mekotex P.V.T Limited";
 		const companySize = 24,
 			titleSize = 25;
 		drawText(`Company Name: ${Company_Name}`, marginLeft, topAfterLogo - 110, companySize, true);
@@ -831,6 +809,81 @@ const InvoiceInqueryPage = () => {
 		}
 	};
 
+	const handleEditInvoice = async (row: InvoiceRow) => {
+		setEditingRow(row);
+		setEditBillNo(String(row.billno ?? ""));
+		setEditChallanNo(row.challanno != null ? String(row.challanno) : "");
+		const [gp, po] = await Promise.all([getGpLabelForRow(row), getPoLabelForRow(row)]);
+		setEditGp(row?.DeliveryChallan?.GP ?? gp ?? "");
+		setEditPo(row?.DeliveryChallan?.PO ?? po ?? "");
+		const mapped = toRowData(row.Description);
+		setEditRows(mapped.length > 0 ? mapped : [{ qty: "", description: "", rate: "", amount: "" }]);
+		setShowEditModal(true);
+	};
+
+	const handleEditRowChange = (idx: number, field: string, value: string) => {
+		setEditRows(prev => {
+			const next = [...prev];
+			const updated = { ...next[idx], [field]: value };
+			if (field === "rate") {
+				const q = Number(String(updated.qty ?? "0").replace(/,/g, "")) || 0;
+				const r = Number(String(value ?? "0").replace(/,/g, "")) || 0;
+				updated.amount = String(Math.round((q * r + Number.EPSILON) * 100) / 100);
+			}
+			next[idx] = updated;
+			return next;
+		});
+	};
+
+	const handleAddEditRow = () => {
+		setEditRows(prev => [...prev, { qty: "", description: "", rate: "", amount: "" }]);
+	};
+
+	const handleDeleteEditRow = (idx: number) => {
+		setEditRows(prev => prev.filter((_, i) => i !== idx));
+	};
+
+	const handleSaveEdit = async () => {
+		if (!editingRow) return;
+		const billStr = String(editBillNo).trim();
+		if (!billStr) return alert("Bill number is required");
+		if (editRows.length === 0) return alert("At least one line item is required");
+
+		const parsedLines = editRows.map(r => ({
+			qty: r.qty,
+			description: r.description,
+			rate: r.rate ?? null,
+			amount: r.amount,
+		}));
+
+		const payload: any = { billno: billStr, lines: parsedLines };
+		if (editChallanNo) {
+			const num = Number(String(editChallanNo).replace(/\D/g, ""));
+			if (Number.isFinite(num) && num > 0) payload.challanno = num;
+		}
+		if (editGp) payload.gp = editGp;
+		if (editPo) payload.po = editPo;
+
+		try {
+			const res = await fetch("/api/invoice", {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err?.error || `HTTP ${res.status}`);
+			}
+			const updated = await res.json();
+			setResults(prev => prev.map(r => String(r.billno) === billStr ? { ...r, Description: updated.Description ?? r.Description, challanno: updated.challanno ?? r.challanno } : r));
+			setShowEditModal(false);
+			alert("Invoice updated successfully");
+		} catch (e: any) {
+			console.error("Failed to update invoice:", e);
+			alert(`Failed to update invoice: ${e?.message || "Unknown error"}`);
+		}
+	};
+
 	const handleReprint = async (row: InvoiceRow) => {
 		try {
 			const rows = toRowData(row.Description);
@@ -855,11 +908,13 @@ const InvoiceInqueryPage = () => {
 					console.error('Failed to fetch challan for GP:', e);
 				}
 			}
+			const company = row?.DeliveryChallan?.Industry || "";
 			const bytes = await generateInvoicePdfBytes(rows, {
 				bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 				challan: challanLabel || undefined,
 				gp,
 				po,
+				company,
 			});
 			const blob = new Blob([bytes.slice(0)], { type: "application/pdf" });
 			const url = URL.createObjectURL(blob);
@@ -910,11 +965,13 @@ const InvoiceInqueryPage = () => {
 						}
 					} catch {}
 				}
+				const company = row?.DeliveryChallan?.Industry || "";
 				const bytes = await generateInvoicePdfBytes(rows, {
 					bill: row.billno ? String(row.billno).padStart(5, "0") : undefined,
 					challan: challanLabel || undefined,
 					gp,
 					po,
+					company,
 				});
 				const billStr = String(row.billno).includes('-') ? String(row.billno) : String(row.billno).padStart(5, "0");
 				zip.file(`${billStr}.pdf`, bytes);
@@ -1037,6 +1094,7 @@ const InvoiceInqueryPage = () => {
 													{row.status ? "Paid" : "Unpaid"}
 												</button>
 												<button onClick={() => handleReprint(row)} className="px-4 py-1.5 rounded-md bg-[var(--accent)] text-black text-xs font-semibold w-full md:w-auto">Reprint</button>
+												<button onClick={() => handleEditInvoice(row)} disabled={pendingBills.has(String(row.billno))} className="px-4 py-1.5 rounded-md bg-blue-500/90 hover:bg-blue-500 text-white text-xs font-semibold w-full md:w-auto disabled:opacity-60 disabled:cursor-not-allowed">Edit</button>
 												<button onClick={() => handleDeleteInvoice(row)} disabled={pendingBills.has(String(row.billno))} className="px-4 py-1.5 rounded-md bg-red-500/90 hover:bg-red-500 text-white text-xs font-semibold w-full md:w-auto disabled:opacity-60 disabled:cursor-not-allowed">Delete</button>
 											</div>
 										</div>
@@ -1361,6 +1419,99 @@ const InvoiceInqueryPage = () => {
 							</div>
 						</div>
 					)}
+
+			{showEditModal && editingRow && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+					<div className="w-full max-w-3xl bg-[#1e1e1e] border border-[var(--accent)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+						<div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/40">
+							<div>
+								<h2 className="text-xl font-bold text-white">Edit Invoice</h2>
+								<p className="text-xs text-white/50 mt-1">Bill: {editBillNo}</p>
+							</div>
+							<button onClick={() => setShowEditModal(false)} className="text-white/50 hover:text-white transition">
+								<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+							</button>
+						</div>
+						<div className="p-6 flex-1 overflow-auto space-y-4">
+							<div>
+								<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">Bill Number</label>
+								<input
+									type="text"
+									value={editBillNo}
+									onChange={(e) => setEditBillNo(e.target.value)}
+									className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+									placeholder="Bill number"
+								/>
+							</div>
+							<div>
+								<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">Challan Number (optional)</label>
+								<input
+									type="text"
+									value={editChallanNo}
+									onChange={(e) => setEditChallanNo(e.target.value)}
+									className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+									placeholder="Leave empty to keep existing"
+								/>
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div>
+									<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">GP Number</label>
+									<input
+										type="text"
+										value={editGp}
+										onChange={(e) => setEditGp(e.target.value)}
+										className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+										placeholder="GP Number"
+									/>
+								</div>
+								<div>
+									<label className="block text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider mb-2">PO Number</label>
+									<input
+										type="text"
+										value={editPo}
+										onChange={(e) => setEditPo(e.target.value)}
+										className="w-full bg-black/40 border-b-2 border-white/20 focus:border-[var(--accent)] outline-none text-sm py-2 px-1 text-white transition-colors"
+										placeholder="PO Number"
+									/>
+								</div>
+							</div>
+							<div>
+								<div className="flex items-center justify-between mb-2">
+									<label className="text-[11px] font-semibold text-[var(--accent)] uppercase tracking-wider">Line Items</label>
+									<button onClick={handleAddEditRow} className="text-[11px] text-white/70 hover:text-white underline">+ Add Row</button>
+								</div>
+								<div className="space-y-2">
+									{editRows.map((row, idx) => (
+										<div key={idx} className="grid grid-cols-12 gap-2 items-start bg-white/5 p-2 rounded-md border border-white/10">
+											<div className="col-span-2">
+												<input type="text" value={row.qty} onChange={(e) => handleEditRowChange(idx, "qty", e.target.value)} className="w-full bg-black/40 border-b border-white/20 focus:border-[var(--accent)] outline-none text-xs py-1.5 px-1 text-white" placeholder="Qty" />
+											</div>
+											<div className="col-span-6">
+												<input type="text" value={row.description} onChange={(e) => handleEditRowChange(idx, "description", e.target.value)} className="w-full bg-black/40 border-b border-white/20 focus:border-[var(--accent)] outline-none text-xs py-1.5 px-1 text-white" placeholder="Description" />
+											</div>
+											<div className="col-span-2">
+												<input type="text" value={row.rate} onChange={(e) => handleEditRowChange(idx, "rate", e.target.value)} className="w-full bg-black/40 border-b border-white/20 focus:border-[var(--accent)] outline-none text-xs py-1.5 px-1 text-white" placeholder="Rate" />
+											</div>
+											<div className="col-span-2">
+												<input type="text" value={row.amount} readOnly className="w-full bg-black/40 border-b border-white/10 outline-none text-xs py-1.5 px-1 text-white/60" placeholder="Amount" />
+											</div>
+											<div className="col-span-12 md:col-span-1 flex items-end justify-end">
+												<button onClick={() => handleDeleteEditRow(idx)} disabled={editRows.length <= 1} className="text-white/50 hover:text-white disabled:opacity-40">
+													<img src="/delete.png" alt="Delete" className="w-4 h-4" />
+												</button>
+											</div>
+										</div>
+									))}
+								</div>
+							</div>
+						</div>
+						<div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-black/40">
+							<button onClick={() => setShowEditModal(false)} className="px-5 py-2 rounded-lg text-xs font-bold text-white/70 hover:text-white transition">Cancel</button>
+							<button onClick={handleSaveEdit} className="bg-[var(--accent)] text-black px-6 py-2 rounded-lg text-xs font-bold hover:opacity-90 transition">Save Changes</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

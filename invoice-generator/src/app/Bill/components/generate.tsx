@@ -12,10 +12,17 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const [companyName, setCompanyName] = useState<string>('');
   const [billNumber, setBillNumber] = useState<string>('');
+  // Tracks whether the user manually typed/edited the bill number themselves.
+  // If true, we send it as an explicit override; otherwise we let the server
+  // compute the authoritative next number for the company (see /api/invoice
+  // POST handler) instead of trusting this client-side preview fetch, which
+  // only exists to show the user what number to expect.
+  const [billNumberManuallyEdited, setBillNumberManuallyEdited] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [multiChallanMode, setMultiChallanMode] = useState<boolean>(false);
   const [selectedChallans, setSelectedChallans] = useState<any[]>([]);
+  const [withoutChallan, setWithoutChallan] = useState<boolean>(false);
   
   // Batch mode state
   const [batchChallans, setBatchChallans] = useState<any[]>([]);
@@ -50,25 +57,22 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
     const prefix = getBillPrefix(companyName);
     if (!prefix) return;
 
-    // Fetch latest invoice to find the last numeric part for this company
+    // Preview only: show the user what number to expect, scoped to this
+    // company's own prefix (not an unscoped/limited global fetch, which could
+    // miss this company's rows if other companies were billed more recently).
+    // The actual number used on submit is computed authoritatively server-side
+    // in /api/invoice (POST), so this fetch never has to be perfectly race-free.
+    if (billNumberManuallyEdited) return;
     const fetchLatest = async () => {
       try {
-        const res = await fetch('/api/invoice?limit=100');
+        const res = await fetch(`/api/invoice?bill=${encodeURIComponent(`${prefix}-`)}&limit=5`);
         if (res.ok) {
           const data = await res.json();
-          const companyInvoices = data.filter((inv: any) => {
-            const invIndustry = inv.DeliveryChallan?.Industry || '';
-            const nameMatch = isUnionFabrics(companyName)
-              ? isUnionFabrics(invIndustry)
-              : invIndustry === companyName;
-            return nameMatch || (inv.billno && String(inv.billno).startsWith(prefix));
-          });
-
           let maxNum = 0;
-          companyInvoices.forEach((inv: any) => {
-            const numPart = String(inv.billno).split('-')[1] || String(inv.billno).match(/\d+$/)?.[0];
+          (Array.isArray(data) ? data : []).forEach((inv: any) => {
+            const numPart = String(inv.billno ?? '').split('-')[1];
             if (numPart) {
-              const n = parseInt(numPart);
+              const n = parseInt(numPart, 10);
               if (!isNaN(n)) maxNum = Math.max(maxNum, n);
             }
           });
@@ -80,7 +84,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       }
     };
     fetchLatest();
-  }, [companyName]);
+  }, [companyName, billNumberManuallyEdited]);
 
   const handleRowChange = (idx: number, field: keyof RowData, value: string) => {
     setRows(prev => {
@@ -105,12 +109,18 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
         .map((c: any) => Number(String(c?.challanno ?? c ?? '').replace(/\D/g, '')))
         .filter((n: number) => Number.isFinite(n) && n > 0);
 
-      if (challanNos.length === 0) return;
+      if (!withoutChallan && challanNos.length === 0) return;
 
       const payload = { 
-        challanno: challanNos[0],
-        challannos: multiChallanMode ? challanNos : undefined,
-        billno: billNumber,
+        challanno: withoutChallan ? null : challanNos[0],
+        challannos: withoutChallan ? undefined : (multiChallanMode ? challanNos : undefined),
+        withoutChallan,
+        // Only pin an explicit bill number if the user actually edited it
+        // themselves. Otherwise omit it and send companyName so the server
+        // allocates the authoritative next number atomically (see /api/invoice
+        // POST) instead of trusting this client's preview guess.
+        billno: billNumberManuallyEdited ? billNumber : undefined,
+        companyName: billNumberManuallyEdited ? undefined : companyName,
         lines: rows.map(r => {
           const q = Number(String(r.qty ?? '').replace(/,/g, '')) || 0;
           const rate = Number(String(r.rate ?? '').replace(/,/g, '')) || 0;
@@ -153,7 +163,11 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       if (!isBatchMode) {
         setChallanQuery('');
         setSelectedChallans([]);
+        setWithoutChallan(false);
         setRows([{ qty: '', description: '', rate: '', amount: '' }]);
+        // Let the preview auto-fetch resume (scoped to whatever company is next)
+        // rather than staying pinned to this invoice's number.
+        setBillNumberManuallyEdited(false);
       }
 
       onConfirm();
@@ -203,6 +217,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
       setBatchChallans([]);
       setCurrentBatchIndex(0);
       setChallanQuery('');
+      setWithoutChallan(false);
       setRows([{ qty: '', description: '', rate: '', amount: '' }]);
     }
   };
@@ -418,7 +433,7 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
               <h2 className='font-semibold text-xs text-white'>Bill No</h2>
               <input
                 value={billNumber}
-                onChange={e=>{ setBillNumber(e.target.value); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
+                onChange={e=>{ setBillNumber(e.target.value); setBillNumberManuallyEdited(true); try{ localStorage.setItem('latestBill', e.target.value);}catch{} }}
                 className='my-2 w-full text-xs border-b-2 border-[var(--accent)] focus:outline-none bg-transparent text-white'
                 placeholder="Enter Bill No"
               />
@@ -454,6 +469,15 @@ const Generate: React.FC<GenerateProps> = ({ rows, setRows, onConfirm }) => {
             className='rounded accent-[var(--accent)]'
           />
           <span className='text-[11px] text-white/80'>Combine multiple challans into one invoice</span>
+          <label className='flex items-center gap-2 ml-4'>
+            <input
+              type='checkbox'
+              checked={withoutChallan}
+              onChange={(e) => setWithoutChallan(e.target.checked)}
+              className='rounded accent-[var(--accent)]'
+            />
+            <span className='text-[11px] text-white/80'>Generate without Challan</span>
+          </label>
           {multiChallanMode && selectedChallans.length > 0 && (
             <button
               type='button'

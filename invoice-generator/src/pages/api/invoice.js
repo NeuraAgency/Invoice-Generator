@@ -2,6 +2,44 @@ import { getSupabaseAdminClient } from '../../lib/supabaseServer'
 
 const isUnionFabrics = (name) => String(name || '').trim().toLowerCase().startsWith('union fabrics')
 
+// Mirrors the prefix logic used on the client (Bill/generate.tsx, Bill/inquery/page.tsx)
+// so bill-number prefixes stay consistent whether computed here or there.
+const getBillPrefixForCompany = (name) => {
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return ''
+  if (isUnionFabrics(trimmed)) return 'UFPL'
+  return trimmed
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .map((w) => w[0].toUpperCase())
+    .join('')
+}
+
+// Finds the next available bill number for a given prefix by querying only
+// rows scoped to that prefix (not a global/unscoped fetch), so a company's
+// own history can never fall outside the query window. Called fresh on every
+// insert attempt so concurrent requests for the same company self-correct
+// instead of both guessing the same stale number.
+const getNextBillNumberForPrefix = async (supabase, prefix) => {
+  if (!prefix) return null
+  const { data, error } = await supabase
+    .from('invoice')
+    .select('billno')
+    .ilike('billno', `${prefix}-%`)
+    .order('billno', { ascending: false })
+    .limit(20) // small buffer in case of any legacy/non-standard suffixes mixed in
+
+  if (error) throw error
+
+  let maxNum = 0
+  for (const row of data || []) {
+    const numPart = String(row?.billno ?? '').split('-')[1]
+    const n = numPart ? parseInt(numPart, 10) : NaN
+    if (!Number.isNaN(n)) maxNum = Math.max(maxNum, n)
+  }
+  return `${prefix}-${String(maxNum + 1).padStart(4, '0')}`
+}
+
 export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdminClient()
@@ -259,10 +297,21 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { challanno, challannos, lines, billno: requestedBillNo } = req.body
+      const { challanno, challannos, lines, billno: requestedBillNo, withoutChallan, companyName } = req.body
 
-      if (!challanno || !Array.isArray(lines)) {
-        return res.status(400).json({ error: 'challanno and lines[] are required' })
+      if (!Array.isArray(lines)) {
+        return res.status(400).json({ error: 'lines[] are required' })
+      }
+
+      // If the client didn't pin an explicit bill number but did tell us which
+      // company this is for, generate the number here from a prefix-scoped DB
+      // query (see getNextBillNumberForPrefix) instead of trusting a client-side
+      // guess based on an unscoped/limited fetch. Re-derived fresh on every
+      // insert attempt below so concurrent requests for the same company
+      // converge instead of colliding.
+      const autoPrefix = !requestedBillNo && companyName ? getBillPrefixForCompany(companyName) : null
+      if (companyName && !requestedBillNo && !autoPrefix) {
+        return res.status(400).json({ error: 'Could not determine a bill prefix from companyName' })
       }
 
       const parseChallanno = (v) => {
@@ -270,12 +319,13 @@ export default async function handler(req, res) {
         return Number.isFinite(n) && n > 0 ? n : null
       }
 
-      const primaryCh = parseChallanno(challanno)
-      if (!primaryCh) {
+      const primaryCh = withoutChallan ? null : parseChallanno(challanno)
+      if (!withoutChallan && !primaryCh) {
         return res.status(400).json({ error: 'Invalid challanno' })
       }
 
       const allChallans = (() => {
+        if (withoutChallan) return []
         if (!Array.isArray(challannos) || challannos.length === 0) return [primaryCh]
         const parsed = challannos.map(parseChallanno).filter(Boolean)
         const set = new Set(parsed)
@@ -283,27 +333,30 @@ export default async function handler(req, res) {
         return Array.from(set)
       })()
 
-      // Confirm challan(s) exist
-      const { data: challanRows, error: challanError } = await supabase
-        .from('DeliveryChallan')
-        .select('challanno')
-        .in('challanno', allChallans)
+      // Confirm challan(s) exist (skip if generating without challan)
+      if (!withoutChallan && allChallans.length > 0) {
+        const { data: challanRows, error: challanError } = await supabase
+          .from('DeliveryChallan')
+          .select('challanno')
+          .in('challanno', allChallans)
 
-      if (challanError) {
-        return res.status(500).json({ error: challanError.message })
-      }
-      const found = new Set((challanRows || []).map(r => r?.challanno))
-      const missing = allChallans.filter(c => !found.has(c))
-      if (missing.length > 0) {
-        return res.status(404).json({ error: `Challan not found: ${missing.join(', ')}` })
+        if (challanError) {
+          return res.status(500).json({ error: challanError.message })
+        }
+        const found = new Set((challanRows || []).map(r => r?.challanno))
+        const missing = allChallans.filter(c => !found.has(c))
+        if (missing.length > 0) {
+          return res.status(404).json({ error: `Challan not found: ${missing.join(', ')}` })
+        }
       }
 
       // If the client sent a specific bill number (like KTML-0001), we use it.
-      // Otherwise, we compute the next numeric one globally.
+      // If they sent a companyName instead, autoPrefix (above) handles generation
+      // per-attempt inside the loop. Otherwise we fall back to the old global
+      // numeric scheme (kept for any caller that doesn't pass companyName).
       let baseNext = 1
-      if (requestedBillNo) {
-        // If it's a string like "KTML-0001", we'll try to use it directly.
-        // We'll trust the client's incrementing logic for now.
+      if (requestedBillNo || autoPrefix) {
+        // handled per-attempt below
       } else {
         try {
           const { data: recent } = await supabase
@@ -330,7 +383,15 @@ export default async function handler(req, res) {
 
       while (attempt < maxAttempts) {
         let candidate = requestedBillNo
-        if (!candidate) {
+        if (autoPrefix) {
+          // Re-query the current max for this prefix on every attempt (not just
+          // the first) so a conflict caused by a concurrent request picks up
+          // the latest state rather than blindly incrementing a stale guess.
+          candidate = await getNextBillNumberForPrefix(supabase, autoPrefix)
+          if (!candidate) {
+            return res.status(500).json({ error: 'Could not determine next bill number' })
+          }
+        } else if (!candidate) {
           candidate = baseNext + attempt
         } else if (attempt > 0) {
           // If we had a conflict with the requested one, we try to increment its numeric part
@@ -360,16 +421,18 @@ export default async function handler(req, res) {
           amount: l.amount,
         }))
 
+        const insertPayload = {
+          billno: candidate,
+          Description: descriptionPayload,
+        }
+        if (!withoutChallan) {
+          insertPayload.challanno = primaryCh;
+        }
+
         const { data, error } = await supabase
           .from('invoice')
           .insert(
-            [
-              {
-                billno: candidate,
-                challanno: primaryCh,
-                Description: descriptionPayload,
-              },
-            ],
+            [insertPayload],
             { returning: 'representation' }
           )
           .select('*')
@@ -401,6 +464,58 @@ export default async function handler(req, res) {
       }
 
       return res.status(409).json({ error: 'Could not allocate a unique bill number. Please retry.' })
+    }
+
+    if (req.method === 'PUT') {
+      const { billno, lines, challanno, gp, po } = req.body || {}
+
+      if (billno == null || !Array.isArray(lines)) {
+        return res.status(400).json({ error: 'billno and lines[] are required' })
+      }
+
+      const billStr = String(billno).trim()
+      if (!billStr) return res.status(400).json({ error: 'billno is required' })
+
+      const descriptionPayload = lines.map((l) => ({
+        qty: l.qty,
+        description: l.description,
+        rate: l.rate ?? null,
+        amount: l.amount,
+      }))
+
+      const updatePayload = { Description: descriptionPayload }
+      if (challanno != null) updatePayload.challanno = challanno
+
+      const { data, error } = await supabase
+        .from('invoice')
+        .update(updatePayload)
+        .eq('billno', billStr)
+        .select('*')
+        .single()
+
+      if (error) return res.status(500).json({ error: error.message })
+      if (!data) return res.status(404).json({ error: 'Invoice not found' })
+
+      // Propagate GP/PO to the related DeliveryChallan if present
+      try {
+        const targetChallan = data?.challanno ?? challanno
+        if (targetChallan != null && (gp != null || po != null)) {
+          const challanUpdate = {}
+          if (gp != null) challanUpdate.GP = String(gp).trim()
+          if (po != null) challanUpdate.PO = String(po).trim()
+
+          const { error: challanErr } = await supabase
+            .from('DeliveryChallan')
+            .update(challanUpdate)
+            .eq('challanno', Number(targetChallan))
+
+          if (challanErr) console.warn('Failed to update DeliveryChallan GP/PO:', challanErr)
+        }
+      } catch (e) {
+        console.warn('DeliveryChallan GP/PO update exception:', e)
+      }
+
+      return res.status(200).json(data)
     }
 
     if (req.method === 'DELETE') {

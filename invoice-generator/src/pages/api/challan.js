@@ -2,6 +2,24 @@ import { getSupabaseAdminClient } from '../../lib/supabaseServer'
 
 const isUnionFabrics = (name) => String(name || '').trim().toLowerCase().startsWith('union fabrics')
 
+// Expresses "challanno starts with these digits" as DB-native numeric ranges
+// (e.g. prefix "3" -> 3, 30-39, 300-399, ...) so the search can be pushed into
+// the same query as every other filter via .or(), instead of requiring its own
+// separate fetch-then-filter pass that ignores everything else and is capped
+// by a fixed row window.
+const buildPrefixRanges = (prefixNum, maxDigits = 7) => {
+  const prefixStr = String(prefixNum)
+  const k = prefixStr.length
+  const ranges = []
+  for (let L = k; L <= maxDigits; L++) {
+    const multiplier = Math.pow(10, L - k)
+    const lo = prefixNum * multiplier
+    const hi = lo + multiplier - 1
+    ranges.push([lo, hi])
+  }
+  return ranges
+}
+
 export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdminClient()
@@ -42,8 +60,10 @@ export default async function handler(req, res) {
       const { id, challan, limit, exact, industry, date, from, to, item, excludeInvoiced, gp, indent } = req.query
       const lim = Number(limit) || 50
       const exclude = shouldExcludeInvoiced(excludeInvoiced)
+      const isExact = String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true'
 
-      // Fetch single challan by primary id (used for edit flows)
+      // Fetch single challan by primary id (used for edit flows) — this is a
+      // direct lookup, not a filtered list, so it stays as its own early return.
       if (id && typeof id === 'string') {
         const parsedId = Number(String(id).replace(/\D/g, ''))
         if (!Number.isNaN(parsedId)) {
@@ -59,55 +79,26 @@ export default async function handler(req, res) {
         }
       }
 
-      // If challan query provided, perform a prefix search on challanno
-      if (challan && typeof challan === 'string') {
-        const lim = Number(limit) || 10
+      // Build one query with every DB-native filter chained onto it, so they all
+      // combine (AND) together instead of branching into separate early-return
+      // paths where a challan-number search would silently drop every other
+      // filter (company, GP, date, item, indent, excludeInvoiced).
+      let query = supabase.from('DeliveryChallan').select('*')
 
-        // challanno is stored as a number; we support simple prefix search
-        // by interpreting the query as a number and filtering rows whose
-        // challanno starts with the provided digits.
-        const parsed = Number(challan.replace(/\D/g, ''))
-
-        if (!Number.isNaN(parsed)) {
-          // If exact flag provided, return only exact challanno matches
-          if (String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true') {
-            const { data, error } = await supabase
-              .from('DeliveryChallan')
-              .select('*')
-              .eq('challanno', parsed)
-              .order('challanno', { ascending: false })
-              .limit(lim)
-
-            if (error) return res.status(500).json({ error: error.message })
-            const out = exclude ? await filterOutInvoiced(data) : data
-            return res.status(200).json(out)
-          }
-
-          // Legacy: best-effort prefix search by casting to text and using like
-          // Note: PostgREST allows text pattern matching on text columns; for numeric
-          // columns, we use a computed text via RPC style filter. As a simpler fallback,
-          // we narrow by a reasonable numeric window then filter in memory.
-          const { data, error } = await supabase
-            .from('DeliveryChallan')
-            .select('*')
-            .order('challanno', { ascending: false })
-            .limit(500)
-
-          if (error) return res.status(500).json({ error: error.message })
-
-          const prefix = String(parsed)
-          const filtered = (data || []).filter((row) => String(row?.challanno ?? '').startsWith(prefix)).slice(0, lim)
-          const out = exclude ? await filterOutInvoiced(filtered) : filtered
-          return res.status(200).json(out)
+      const challanDigits = challan && typeof challan === 'string' ? challan.replace(/\D/g, '') : ''
+      if (challanDigits.length > 0) {
+        const parsed = Number(challanDigits)
+        if (isExact) {
+          query = query.eq('challanno', parsed)
+        } else {
+          // Prefix search expressed as numeric ranges pushed into the query itself
+          // (see buildPrefixRanges), so it composes with the other filters and
+          // isn't limited to whatever fits in a fixed-size fetch window.
+          const ranges = buildPrefixRanges(parsed)
+          const orExpr = ranges.map(([lo, hi]) => `and(challanno.gte.${lo},challanno.lte.${hi})`).join(',')
+          query = query.or(orExpr)
         }
       }
-
-      // Default: return with optional filters
-      let query = supabase
-        .from('DeliveryChallan')
-        .select('*')
-        .order('challanno', { ascending: false })
-        .limit(lim)
 
       if (industry && typeof industry === 'string') {
         // If filtering by a Union Fabrics variant, match all Union Fabrics rows
@@ -126,8 +117,7 @@ export default async function handler(req, res) {
       if (from && typeof from === 'string') {
         const d = new Date(from)
         if (!Number.isNaN(d.getTime())) {
-          const fromIso = d.toISOString()
-          query = query.gte('created_at', fromIso)
+          query = query.gte('created_at', d.toISOString())
         }
       }
 
@@ -143,23 +133,28 @@ export default async function handler(req, res) {
         query = query.ilike('GP', `%${gp.trim()}%`)
       }
 
-      const { data, error } = await query
+      query = query.order('challanno', { ascending: false })
 
+      // item/indent (fuzzy substring match) and excludeInvoiced can't be expressed
+      // as plain column filters, so they still run in memory below — but decoupled
+      // from the display `limit`. When any of them are active we fetch a much
+      // wider candidate window first (bounded by FETCH_CAP, not by `lim`), filter
+      // that, and only then trim to `lim`. Otherwise (no such filters) we fetch
+      // exactly `lim` rows as before, since there's nothing further to narrow.
+      const hasItemFilter = Boolean(item && typeof item === 'string' && item.trim())
+      const hasIndentFilter = Boolean(indent && typeof indent === 'string' && indent.trim())
+      const needsWideWindow = hasItemFilter || hasIndentFilter || exclude
+      const FETCH_CAP = 2000
+      const fetchLimit = needsWideWindow ? Math.max(FETCH_CAP, lim) : lim
+      query = query.limit(fetchLimit)
+
+      const { data, error } = await query
       if (error) return res.status(500).json({ error: error.message })
 
       let filtered = data || []
 
-      // If challan prefix provided without exact flag, perform client-side prefix filter
-      if (challan && typeof challan === 'string' && !(String(exact).toLowerCase() === '1' || String(exact).toLowerCase() === 'true')) {
-        const parsed = Number(challan.replace(/\D/g, ''))
-        if (!Number.isNaN(parsed)) {
-          const prefix = String(parsed)
-          filtered = filtered.filter((row) => String(row?.challanno ?? '').startsWith(prefix))
-        }
-      }
-
       // Item name filter: matches any Description entry's text fields containing the query
-      if (item && typeof item === 'string') {
+      if (hasItemFilter) {
         const q = item.trim().toLowerCase()
         filtered = filtered.filter(row => {
           const desc = row?.Description
@@ -173,7 +168,7 @@ export default async function handler(req, res) {
       }
 
       // Indent number filter: matches any Description entry's indent number containing the query
-      if (indent && typeof indent === 'string') {
+      if (hasIndentFilter) {
         const q = indent.trim().toLowerCase()
         filtered = filtered.filter(row => {
           const desc = row?.Description
@@ -186,8 +181,11 @@ export default async function handler(req, res) {
         })
       }
 
-      const finalFiltered = filtered.slice(0, lim)
-      const out = exclude ? await filterOutInvoiced(finalFiltered) : finalFiltered
+      if (exclude) {
+        filtered = await filterOutInvoiced(filtered)
+      }
+
+      const out = filtered.slice(0, lim)
       return res.status(200).json(out)
     }
 
